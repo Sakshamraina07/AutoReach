@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "AutoReach - Cold Email Outreach",
+  "version": "1.0.0",
+  "description": "Automate personalized cold emails to recruiters with smart follow-ups and tracking.",
+
+  "action": {
+    "default_title": "Open AutoReach",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+
+  "side_panel": {
+    "default_path": "index.html"
+  },
+
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "identity",
+    "scripting"
+  ],
+
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "https://*.supabase.co/*",
+    "https://accounts.google.com/*",
+    "https://www.googleapis.com/*"
+  ],
+
+  "oauth2": {
+    "client_id": "865030703352-ie39225agct02nuf2nm8qehorq3sj28n.apps.googleusercontent.com",
+    "scopes": ["openid", "email", "profile"]
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+
+  "web_accessible_resources": [
+    {
+      "resources": ["index.html", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
