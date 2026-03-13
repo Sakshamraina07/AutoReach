@@ -102,7 +102,7 @@ const processFollowups = async () => {
                 continue;
             }
 
-            const trackingUrl = `${process.env.API_URL || 'http://localhost:3001'}/track/${historyEntry.id}`;
+            const trackingUrl = `${process.env.API_URL || 'https://autoreach-pjez.onrender.com'}/track/${historyEntry.id}`;
             body += `<br><img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
 
             let attachments = [];

@@ -21,7 +21,7 @@ const manifest = {
     "scripting",
   ],
   host_permissions: [
-    "http://localhost:3001/*",
+    "https://autoreach-pjez.onrender.com/*",
     "https://*.supabase.co/*",
     "https://accounts.google.com/*",
     "https://www.googleapis.com/*",

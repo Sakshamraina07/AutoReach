@@ -33,7 +33,7 @@ npm install
 Create a `.env` file in the `backend/` directory:
 ```env
 PORT=3001
-API_URL=http://localhost:3001
+API_URL=https://autoreach-pjez.onrender.com
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
 RESEND_API_KEY=re_your_resend_api_key
@@ -53,7 +53,7 @@ npm install
 
 Create a `.env` file in the `extension/` directory:
 ```env
-VITE_API_URL=http://localhost:3001
+VITE_API_URL=https://autoreach-pjez.onrender.com
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
