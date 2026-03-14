@@ -24,7 +24,7 @@ const processQueue = async () => {
         if (recError && recError.code !== 'PGRST116') throw recError;
         if (!nextRecruiter) { isProcessing = false; return; }
 
-        // ✅ FIXED: Use admin auth API instead of .from('users')
+        // ✅ Use admin auth API to get user
         const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(nextRecruiter.user_id);
 
         if (userError || !user) {
@@ -33,11 +33,16 @@ const processQueue = async () => {
             return;
         }
 
-        const { data: smtpSettings } = await supabase
+        // ✅ Use supabaseAdmin to bypass RLS on smtp settings
+        const { data: smtpSettings, error: smtpError } = await supabaseAdmin
             .from('user_smtp_settings')
             .select('*')
             .eq('user_id', user.id)
             .single();
+
+        console.log('[Debug] user.id:', user.id);
+        console.log('[Debug] smtpSettings:', smtpSettings);
+        console.log('[Debug] smtpError:', smtpError);
 
         if (!smtpSettings) {
             console.log(`[Queue] User ${user.email} has no Gmail connected. Skipping.`);
