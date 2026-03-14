@@ -10,7 +10,7 @@ router.get('/:history_id', async (req, res) => {
 
         // Base64 encoded 1x1 transparent GIF
         const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-        
+
         // Return pixel immediately so email client doesn't hang
         res.writeHead(200, {
             'Content-Type': 'image/gif',
@@ -25,8 +25,8 @@ router.get('/:history_id', async (req, res) => {
         if (history_id && history_id.length === 36) { // basic UUID check
             await supabase
                 .from('email_history')
-                .update({ 
-                    opened_at: new Date().toISOString() 
+                .update({
+                    opened_at: new Date().toISOString()
                 })
                 .eq('id', history_id)
                 .is('opened_at', null); // Only update if it hasn't been opened yet

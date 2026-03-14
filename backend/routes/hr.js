@@ -11,7 +11,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 const isValidEmail = (email) => {
     if (!email) return false;
     const lower = email.toLowerCase().trim();
-    
+
     // Check basic format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(lower)) return false;
@@ -36,7 +36,7 @@ router.get('/list', requireAuth, async (req, res) => {
             .order('created_at', { ascending: false });
 
         if (error) throw error;
-        
+
         res.json({ recruiters: data });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -46,7 +46,7 @@ router.get('/list', requireAuth, async (req, res) => {
 router.post('/add', requireAuth, async (req, res) => {
     try {
         const { hr_name, company, email, role, source } = req.body;
-        
+
         if (!isValidEmail(email)) {
             return res.status(400).json({ error: 'Invalid or generic email address' });
         }
@@ -69,7 +69,7 @@ router.post('/add', requireAuth, async (req, res) => {
             return res.status(409).json({ error: 'Recruiter with this email already exists' });
         }
         if (error) throw error;
-        
+
         res.json({ success: true, recruiter: data });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -83,7 +83,7 @@ router.post('/import', requireAuth, upload.single('file'), async (req, res) => {
         }
 
         const csvData = req.file.buffer.toString('utf8');
-        
+
         parse(csvData, { columns: true, skip_empty_lines: true }, async (err, records) => {
             if (err) return res.status(400).json({ error: 'Invalid CSV format' });
 
@@ -122,8 +122,8 @@ router.post('/import', requireAuth, upload.single('file'), async (req, res) => {
 
             if (error) throw error;
 
-            res.json({ 
-                success: true, 
+            res.json({
+                success: true,
                 message: `Imported ${validRecruiters.length} valid recruiters`,
                 inserted: data?.length || 0
             });
@@ -141,7 +141,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
             .delete()
             .eq('id', req.params.id)
             .eq('user_id', req.user.id);
-            
+
         if (error) throw error;
         res.json({ success: true });
     } catch (error) {

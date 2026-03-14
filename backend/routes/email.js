@@ -9,14 +9,14 @@ const router = express.Router();
 router.post('/preview', requireAuth, async (req, res) => {
     try {
         const { templateType, recruiterData } = req.body;
-        
+
         // Fetch User profile to replace sender vars
         const { data: userProfile, error: userError } = await supabase
             .from('users')
             .select('*')
             .eq('id', req.user.id)
             .single();
-            
+
         if (userError) throw userError;
 
         // Fetch Template
@@ -28,7 +28,7 @@ router.post('/preview', requireAuth, async (req, res) => {
             .single();
 
         if (tplError && tplError.code !== 'PGRST116') throw tplError; // PGRST116 is not found
-        
+
         if (!template) {
             return res.status(404).json({ error: 'Template not found' });
         }
@@ -75,10 +75,10 @@ router.post('/send', requireAuth, emailSendLimiter, async (req, res) => {
     try {
         // This endpoint just triggers our background queue. 
         // We will flip the state in global scope so the set interval worker processes this user.
-        
+
         // Mark user queue as "Active" -- in a real scalable system, we'd use Redis or DB job table.
         // For MVP, we insert a generic trigger command to activate queue or rely on worker polling.
-        
+
         res.json({ success: true, message: 'Email queue started. Processing in background.' });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -94,7 +94,7 @@ router.get('/template/:type', requireAuth, async (req, res) => {
             .eq('user_id', req.user.id)
             .eq('type', req.params.type)
             .single();
-            
+
         res.json({ template: data || null });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -104,7 +104,7 @@ router.get('/template/:type', requireAuth, async (req, res) => {
 router.post('/template', requireAuth, async (req, res) => {
     try {
         const { type, subject, body } = req.body;
-        
+
         const { data, error } = await supabase
             .from('email_templates')
             .upsert({
@@ -116,7 +116,7 @@ router.post('/template', requireAuth, async (req, res) => {
             }, { onConflict: 'user_id,type' })
             .select()
             .single();
-            
+
         if (error) throw error;
         res.json({ success: true, template: data });
     } catch (error) {

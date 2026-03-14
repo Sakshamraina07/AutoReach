@@ -13,7 +13,7 @@ router.get('/me', requireAuth, async (req, res) => {
             .single();
 
         if (error) throw error;
-        
+
         res.json({ user: data });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -23,7 +23,7 @@ router.get('/me', requireAuth, async (req, res) => {
 router.post('/setup', requireAuth, async (req, res) => {
     try {
         const { name, degree, year, location, contact } = req.body;
-        
+
         const { data, error } = await supabase
             .from('users')
             .upsert({
@@ -38,7 +38,7 @@ router.post('/setup', requireAuth, async (req, res) => {
             .single();
 
         if (error) throw error;
-        
+
         res.json({ success: true, user: data });
     } catch (error) {
         res.status(500).json({ error: error.message });

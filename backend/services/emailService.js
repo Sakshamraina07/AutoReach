@@ -40,7 +40,7 @@ export const getWarmupLimit = (userCreatedAt) => {
     const now = new Date();
     const created = new Date(userCreatedAt);
     const diffDays = Math.floor((now - created) / (1000 * 60 * 60 * 24));
-    
+
     if (diffDays === 0) return 5; // Day 1
     if (diffDays === 1) return 10; // Day 2
     return 25; // Day 3+
