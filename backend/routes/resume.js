@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { requireAuth } from '../middleware/auth.js';
-import { supabase } from '../server.js';
+import { supabase, supabaseAdmin } from '../server.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -30,11 +30,11 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req, res) =>
             .from('resumes')
             .getPublicUrl(filePath);
 
-        // Update user profile
-        const { error: dbError } = await supabase
-            .from('users')
-            .update({ resume_url: publicUrl })
-            .eq('id', req.user.id);
+        // ✅ FIXED: Update user_metadata instead of .from('users')
+        const { error: dbError } = await supabaseAdmin.auth.admin.updateUserById(
+            req.user.id,
+            { user_metadata: { resume_url: publicUrl } }
+        );
 
         if (dbError) throw dbError;
 
