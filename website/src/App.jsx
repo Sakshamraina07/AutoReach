@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Download, Zap, Shield, Mail, MousePointer2, Settings, CheckCircle2, Github } from 'lucide-react';
+import { Download, Zap, Shield, Mail, MousePointer2, Settings, CheckCircle2, Github, Linkedin } from 'lucide-react';
 
 const App = () => {
   const features = [
@@ -121,6 +121,51 @@ const App = () => {
                 </motion.div>
               ))}
             </div>
+          </div>
+        </section>
+
+        <section className="built-by">
+          <div className="container">
+            <motion.div 
+              className="founder-card"
+              initial={{ opacity: 0, scale: 0.95 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <div className="tech-element el-br">
+                <span className="atomic-num">35</span>
+                <span className="symbol">Br</span>
+              </div>
+              <div className="tech-element el-ba">
+                <span className="atomic-num">56</span>
+                <span className="symbol">Ba</span>
+              </div>
+
+              <div className="founder-profile">
+                <div className="profile-img-glow">
+                  <img src="https://github.com/Sakshamraina07.png" alt="Saksham Raina" />
+                </div>
+                <div className="dev-badge">DEV_CORE_01</div>
+              </div>
+
+              <div className="founder-info">
+                <span className="built-by-label">Built By</span>
+                <h2>Saksham Raina</h2>
+                <p className="founder-bio">
+                  Saksham Raina is a developer focused on automation, AI systems, and building intelligent productivity tools. 
+                  AutoReach was built to eliminate friction from outreach using precision engineering and AI logic.
+                </p>
+                <div className="founder-socials">
+                  <a href="https://github.com/Sakshamraina07" target="_blank" rel="noreferrer" className="social-icon">
+                    <Github size={20} />
+                  </a>
+                  <a href="https://linkedin.com/in/sakshamraina" target="_blank" rel="noreferrer" className="social-icon">
+                    <Linkedin size={20} />
+                  </a>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </section>
 
