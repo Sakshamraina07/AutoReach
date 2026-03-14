@@ -1,4 +1,4 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { supabase, supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/emailService.js';
 import dotenv from 'dotenv';
@@ -43,6 +43,19 @@ const processQueue = async () => {
             isProcessing = false;
             return;
         }
+
+        const transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: smtpSettings.gmail_user,
+                pass: smtpSettings.gmail_app_password,
+            },
+            tls: {
+                rejectUnauthorized: false
+            }
+        });
 
         const isBypassed = BYPASS_WARMUP_EMAILS.includes(user.email);
 
@@ -104,7 +117,7 @@ const processQueue = async () => {
             return;
         }
 
-        const trackingUrl = `${process.env.API_URL || 'https://autoreach-pjez.onrender.com'}/track/${historyEntry.id}`;
+        const trackingUrl = `${process.env.API_URL || 'https://autoreach-production.up.railway.app'}/track/${historyEntry.id}`;
         body += `<br><img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
 
         let attachments = [];
@@ -114,10 +127,7 @@ const processQueue = async () => {
                 if (response.ok) {
                     const arrayBuffer = await response.arrayBuffer();
                     const buffer = Buffer.from(arrayBuffer);
-                    attachments.push({
-                        filename: 'Resume.pdf',
-                        content: buffer.toString('base64'),
-                    });
+                    attachments.push({ filename: 'Resume.pdf', content: buffer });
                 }
             } catch (err) {
                 console.error('[Queue] Could not attach resume:', err);
@@ -125,17 +135,13 @@ const processQueue = async () => {
         }
 
         try {
-            // ✅ Resend initialized here so dotenv is already loaded
-            const resend = new Resend(process.env.RESEND_API_KEY);
-            const { error: sendError } = await resend.emails.send({
-                from: `${user.user_metadata?.name || smtpSettings.gmail_user} <onboarding@resend.dev>`,
+            await transporter.sendMail({
+                from: `"${user.user_metadata?.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
                 to: nextRecruiter.email,
                 subject,
                 html: body.replace(/\n/g, '<br/>'),
                 attachments: attachments.length > 0 ? attachments : undefined,
             });
-
-            if (sendError) throw new Error(sendError.message);
 
             await supabase.from('recruiters').update({
                 status: 'Sent',
@@ -143,10 +149,10 @@ const processQueue = async () => {
             }).eq('id', nextRecruiter.id);
 
             await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-            console.log(`[Queue] Sent email to ${nextRecruiter.email} via Resend`);
+            console.log(`[Queue] Sent email to ${nextRecruiter.email} via ${smtpSettings.gmail_user}`);
 
         } catch (sendError) {
-            console.error('[Resend Error]', sendError.message);
+            console.error('[Gmail Error]', sendError.message);
             const retryCount = historyEntry.retry_count || 0;
             if (retryCount < 3) {
                 await supabase.from('email_history').update({

@@ -1,10 +1,8 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { supabase, supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay } from '../services/emailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 let isProcessingFollowups = false;
 
@@ -63,6 +61,20 @@ const processFollowups = async () => {
                 continue;
             }
 
+            // ✅ Nodemailer transporter using user's own Gmail
+            const transporter = nodemailer.createTransport({
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false,
+                auth: {
+                    user: smtpSettings.gmail_user,
+                    pass: smtpSettings.gmail_app_password,
+                },
+                tls: {
+                    rejectUnauthorized: false
+                }
+            });
+
             const nextFollowupType = recruiter.followup_count === 0 ? 'followup_1' : 'followup_2';
 
             const { data: template } = await supabase
@@ -97,10 +109,9 @@ const processFollowups = async () => {
                 continue;
             }
 
-            const trackingUrl = `${process.env.API_URL || 'https://autoreach-pjez.onrender.com'}/track/${historyEntry.id}`;
+            const trackingUrl = `${process.env.API_URL || 'https://autoreach-production.up.railway.app'}/track/${historyEntry.id}`;
             body += `<br><img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
 
-            // ✅ Build attachments
             let attachments = [];
             if (user.user_metadata?.resume_url) {
                 try {
@@ -108,10 +119,7 @@ const processFollowups = async () => {
                     if (response.ok) {
                         const arrayBuffer = await response.arrayBuffer();
                         const buffer = Buffer.from(arrayBuffer);
-                        attachments.push({
-                            filename: 'Resume.pdf',
-                            content: buffer.toString('base64'),
-                        });
+                        attachments.push({ filename: 'Resume.pdf', content: buffer });
                     }
                 } catch (err) {
                     console.error('[Followup Worker] Could not attach resume:', err);
@@ -119,16 +127,13 @@ const processFollowups = async () => {
             }
 
             try {
-                // ✅ Send via Resend instead of nodemailer
-                const { error: sendError } = await resend.emails.send({
-                    from: `${user.user_metadata?.name || smtpSettings.gmail_user} <onboarding@resend.dev>`,
+                await transporter.sendMail({
+                    from: `"${user.user_metadata?.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
                     to: recruiter.email,
                     subject,
                     html: body.replace(/\n/g, '<br/>'),
                     attachments: attachments.length > 0 ? attachments : undefined,
                 });
-
-                if (sendError) throw new Error(sendError.message);
 
                 await supabase.from('recruiters').update({
                     last_sent_at: new Date().toISOString(),
@@ -136,7 +141,7 @@ const processFollowups = async () => {
                 }).eq('id', recruiter.id);
 
                 await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} via Resend`);
+                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} via ${smtpSettings.gmail_user}`);
 
             } catch (err) {
                 console.error('[Followup Worker] Send failed:', err.message);
