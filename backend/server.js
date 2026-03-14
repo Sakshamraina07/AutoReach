@@ -15,10 +15,21 @@ app.set('trust proxy', 1); // ✅ Fix for express-rate-limit on Render
 app.use(cors());
 app.use(express.json());
 
-// Initialize Supabase Client
+// Initialize Supabase Clients
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+// Standard client (anon key) — used for normal DB queries
 export const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Admin client (service role key) — used for auth.admin.getUserById in workers
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+    },
+});
 
 // Import Routes
 import userRoutes from './routes/user.js';

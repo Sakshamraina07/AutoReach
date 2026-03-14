@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { supabase } from '../server.js';
+import { supabase, supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay } from '../services/emailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -41,18 +41,14 @@ const processFollowups = async () => {
             const hasOpened = emailHistory?.some(h => h.opened_at !== null);
             if (hasOpened) continue;
 
-            const { data: user, error: userError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', recruiter.user_id)
-                .single();
+            // ✅ FIXED: Use admin auth API instead of .from('users')
+            const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(recruiter.user_id);
 
             if (userError || !user) {
                 console.error('[Followup Worker] Could not find user:', recruiter.user_id);
                 continue;
             }
 
-            // ✅ Fetch user's own Gmail SMTP credentials
             const { data: smtpSettings } = await supabase
                 .from('user_smtp_settings')
                 .select('*')
@@ -64,7 +60,6 @@ const processFollowups = async () => {
                 continue;
             }
 
-            // ✅ Create transporter dynamically per user
             const transporter = nodemailer.createTransport({
                 service: 'gmail',
                 auth: {
@@ -111,9 +106,9 @@ const processFollowups = async () => {
             body += `<br><img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
 
             let attachments = [];
-            if (user.resume_url) {
+            if (user.user_metadata?.resume_url) {
                 try {
-                    const response = await fetch(user.resume_url);
+                    const response = await fetch(user.user_metadata.resume_url);
                     if (response.ok) {
                         const arrayBuffer = await response.arrayBuffer();
                         const buffer = Buffer.from(arrayBuffer);
@@ -126,7 +121,7 @@ const processFollowups = async () => {
 
             try {
                 await transporter.sendMail({
-                    from: `"${user.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
+                    from: `"${user.user_metadata?.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
                     to: recruiter.email,
                     subject,
                     html: body.replace(/\n/g, '<br/>'),

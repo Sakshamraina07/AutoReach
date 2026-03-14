@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import { supabase } from '../server.js';
+import { supabase, supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/emailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -24,11 +24,8 @@ const processQueue = async () => {
         if (recError && recError.code !== 'PGRST116') throw recError;
         if (!nextRecruiter) { isProcessing = false; return; }
 
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', nextRecruiter.user_id)
-            .single();
+        // ✅ FIXED: Use admin auth API instead of .from('users')
+        const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(nextRecruiter.user_id);
 
         if (userError || !user) {
             console.error('[Queue] Could not find user for recruiter:', nextRecruiter.user_id);
@@ -120,9 +117,9 @@ const processQueue = async () => {
         body += `<br><img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
 
         let attachments = [];
-        if (user.resume_url) {
+        if (user.user_metadata?.resume_url) {
             try {
-                const response = await fetch(user.resume_url);
+                const response = await fetch(user.user_metadata.resume_url);
                 if (response.ok) {
                     const arrayBuffer = await response.arrayBuffer();
                     const buffer = Buffer.from(arrayBuffer);
@@ -135,7 +132,7 @@ const processQueue = async () => {
 
         try {
             await transporter.sendMail({
-                from: `"${user.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
+                from: `"${user.user_metadata?.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
                 to: nextRecruiter.email,
                 subject,
                 html: body.replace(/\n/g, '<br/>'),
