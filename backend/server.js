@@ -5,12 +5,13 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
-// ✅ Catch unhandled rejections so we can see exact crash reason
+// ✅ Catch unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[CRASH] Unhandled Rejection:', JSON.stringify(reason, null, 2));
 });
 
 const app = express();
+app.set('trust proxy', 1); // ✅ Fix for express-rate-limit on Render
 app.use(cors());
 app.use(express.json());
 
