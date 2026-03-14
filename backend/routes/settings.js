@@ -1,5 +1,5 @@
 import express from 'express';
-import { supabase } from '../server.js';
+import { supabaseAdmin } from '../server.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -12,7 +12,7 @@ router.post('/smtp', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Gmail and App Password are required' });
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
         .from('user_smtp_settings')
         .upsert({
             user_id: req.user.id,
@@ -26,7 +26,7 @@ router.post('/smtp', requireAuth, async (req, res) => {
 
 // Get user's connected Gmail (without exposing password)
 router.get('/smtp', requireAuth, async (req, res) => {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
         .from('user_smtp_settings')
         .select('gmail_user, created_at')
         .eq('user_id', req.user.id)
