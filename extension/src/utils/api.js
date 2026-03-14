@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // ✅ Hardcoded to avoid crxjs env injection bug
-const API_URL = 'https://autoreach-pjez.onrender.com';
+const API_URL = 'https://autoreach-production.up.railway.app';
 
 export const api = axios.create({
     baseURL: API_URL,
