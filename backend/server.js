@@ -5,13 +5,15 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
-// ✅ Catch unhandled rejections
+// ✅ Catch unhandled rejections with full stack trace
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[CRASH] Unhandled Rejection:', JSON.stringify(reason, null, 2));
+    console.error('[CRASH] Stack:', reason?.stack);
+    console.error('[CRASH] Full reason:', reason);
 });
 
 const app = express();
-app.set('trust proxy', 1); // ✅ Fix for express-rate-limit on Render
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
