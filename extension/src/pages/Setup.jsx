@@ -10,12 +10,10 @@ function Setup() {
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState('');
 
-    // Gmail SMTP state
-    const [gmailUser, setGmailUser] = useState('');
-    const [gmailAppPassword, setGmailAppPassword] = useState('');
+    // Gmail OAuth state
     const [gmailConnected, setGmailConnected] = useState(false);
     const [connectedEmail, setConnectedEmail] = useState('');
-    const [gmailSaving, setGmailSaving] = useState(false);
+    const [gmailConnecting, setGmailConnecting] = useState(false);
     const [gmailMessage, setGmailMessage] = useState('');
 
     useEffect(() => {
@@ -41,7 +39,7 @@ function Setup() {
 
         const fetchGmailStatus = async () => {
             try {
-                const response = await api.get('/settings/smtp');
+                const response = await api.get('/settings/gmail/status');
                 if (response.data.connected) {
                     setGmailConnected(true);
                     setConnectedEmail(response.data.gmail_user);
@@ -94,30 +92,69 @@ function Setup() {
         }
     };
 
-    const handleGmailSave = async (e) => {
-        e.preventDefault();
-        setGmailSaving(true);
+    const handleConnectGmail = async () => {
+        setGmailConnecting(true);
         setGmailMessage('');
 
         try {
-            await api.post('/settings/smtp', {
-                gmail_user: gmailUser,
-                gmail_app_password: gmailAppPassword
+            // Get the user's Supabase JWT from local storage
+            const storageData = await new Promise((resolve) => {
+                chrome.storage.local.get(null, resolve);
             });
-            setGmailConnected(true);
-            setConnectedEmail(gmailUser);
-            setGmailUser('');
-            setGmailAppPassword('');
-            setGmailMessage('Gmail connected successfully!');
-            setTimeout(() => setGmailMessage(''), 3000);
+
+            // Find the access token — key may vary based on your auth setup
+            const supabaseToken =
+                storageData?.['sb-access-token'] ||
+                storageData?.access_token ||
+                Object.values(storageData).find(v => typeof v === 'object' && v?.access_token)?.access_token;
+
+            if (!supabaseToken) {
+                setGmailMessage('Not logged in. Please sign in first.');
+                setGmailConnecting(false);
+                return;
+            }
+
+            // Trigger Gmail OAuth flow via background.js
+            const result = await new Promise((resolve) => {
+                chrome.runtime.sendMessage({
+                    type: 'CONNECT_GMAIL',
+                    supabaseToken,
+                    apiUrl: 'https://autoreach-production.up.railway.app',
+                }, resolve);
+            });
+
+            if (result?.error) {
+                setGmailMessage('Failed: ' + result.error);
+            } else if (result?.success) {
+                setGmailConnected(true);
+                setConnectedEmail(result.gmail_user);
+                setGmailMessage('Gmail connected successfully!');
+                setTimeout(() => setGmailMessage(''), 3000);
+            }
         } catch (error) {
-            setGmailMessage('Failed to connect Gmail. ' + (error.response?.data?.error || error.message));
+            setGmailMessage('Error: ' + error.message);
         } finally {
-            setGmailSaving(false);
+            setGmailConnecting(false);
         }
     };
 
-    if (loading) return <div className="p-6 flex justify-center"><div className="animate-spin h-6 w-6 border-2 border-blue-500 rounded-full border-t-transparent"></div></div>;
+    const handleDisconnectGmail = async () => {
+        try {
+            await api.delete('/settings/gmail/disconnect');
+            setGmailConnected(false);
+            setConnectedEmail('');
+            setGmailMessage('Gmail disconnected.');
+            setTimeout(() => setGmailMessage(''), 3000);
+        } catch (error) {
+            setGmailMessage('Failed to disconnect: ' + error.message);
+        }
+    };
+
+    if (loading) return (
+        <div className="p-6 flex justify-center">
+            <div className="animate-spin h-6 w-6 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+        </div>
+    );
 
     return (
         <div className="p-6 h-screen overflow-y-auto bg-slate-50">
@@ -158,7 +195,9 @@ function Setup() {
                     {profile.resume_url && (
                         <div className="mb-4 flex items-center justify-between bg-green-50 p-3 rounded-md border border-green-100">
                             <span className="text-sm text-green-700 flex items-center">
-                                <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
+                                <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                </svg>
                                 Resume uploaded
                             </span>
                             <a href={profile.resume_url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:text-blue-800 font-medium">View</a>
@@ -184,55 +223,58 @@ function Setup() {
                 )}
             </form>
 
-            {/* Gmail SMTP Section */}
+            {/* Gmail OAuth Section */}
             <div className="mt-6 bg-white p-5 rounded-xl shadow-sm border border-slate-100">
                 <h3 className="text-sm font-semibold text-slate-800 mb-1">Connect Gmail for Sending</h3>
-                <p className="text-xs text-slate-500 mb-4">Emails will be sent from your own Gmail account. Use a Google App Password — not your regular password.</p>
+                <p className="text-xs text-slate-500 mb-4">
+                    Securely connect your Gmail account via Google OAuth. Emails will be sent from your own Gmail address.
+                </p>
 
-                {gmailConnected && (
-                    <div className="mb-4 flex items-center justify-between bg-green-50 p-3 rounded-md border border-green-100">
-                        <span className="text-sm text-green-700 flex items-center">
-                            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path></svg>
-                            Connected: {connectedEmail}
-                        </span>
-                        <span className="text-xs text-slate-400">Update below</span>
+                {gmailConnected ? (
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between bg-green-50 p-3 rounded-md border border-green-100">
+                            <span className="text-sm text-green-700 flex items-center">
+                                <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                </svg>
+                                Connected: {connectedEmail}
+                            </span>
+                        </div>
+                        <button
+                            onClick={handleDisconnectGmail}
+                            className="w-full flex justify-center py-2 px-4 border border-red-300 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
+                        >
+                            Disconnect Gmail
+                        </button>
+                        <button
+                            onClick={handleConnectGmail}
+                            disabled={gmailConnecting}
+                            className="w-full flex justify-center py-2 px-4 border border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                            {gmailConnecting ? 'Reconnecting...' : 'Reconnect with different account'}
+                        </button>
                     </div>
-                )}
-
-                <form onSubmit={handleGmailSave} className="space-y-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Gmail Address</label>
-                        <input
-                            type="email"
-                            value={gmailUser}
-                            onChange={e => setGmailUser(e.target.value)}
-                            placeholder="you@gmail.com"
-                            className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">App Password</label>
-                        <input
-                            type="password"
-                            value={gmailAppPassword}
-                            onChange={e => setGmailAppPassword(e.target.value)}
-                            placeholder="16-character app password"
-                            className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                            required
-                        />
-                        <p className="mt-1 text-xs text-slate-400">
-                            Get it from: Google Account → Security → 2-Step Verification → App Passwords
-                        </p>
-                    </div>
+                ) : (
                     <button
-                        type="submit"
-                        disabled={gmailSaving}
-                        className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+                        onClick={handleConnectGmail}
+                        disabled={gmailConnecting}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
                     >
-                        {gmailSaving ? 'Connecting...' : gmailConnected ? 'Update Gmail' : 'Connect Gmail'}
+                        {gmailConnecting ? (
+                            <>
+                                <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
+                                Connecting...
+                            </>
+                        ) : (
+                            <>
+                                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M20.283 10.356h-8.327v3.451h4.792c-.446 2.193-2.313 3.453-4.792 3.453a5.27 5.27 0 0 1-5.279-5.28 5.27 5.27 0 0 1 5.279-5.279c1.259 0 2.397.447 3.29 1.178l2.6-2.599c-1.584-1.381-3.615-2.233-5.89-2.233a8.908 8.908 0 0 0-8.934 8.934 8.908 8.908 0 0 0 8.934 8.934c4.467 0 8.529-3.249 8.529-8.934 0-.528-.081-1.097-.202-1.625z" />
+                                </svg>
+                                Connect Gmail with Google
+                            </>
+                        )}
                     </button>
-                </form>
+                )}
 
                 {gmailMessage && (
                     <div className={`mt-3 p-3 rounded-md text-sm text-center font-medium ${gmailMessage.includes('success') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
