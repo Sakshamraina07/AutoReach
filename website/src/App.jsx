@@ -105,7 +105,14 @@ const App = () => {
             <Zap size={24} fill="#3b82f6" />
             <span>AutoReach</span>
           </div>
-          <a href="https://github.com/Sakshamraina07/AutoReach" target="_blank" rel="noreferrer" className="btn btn-secondary">
+          
+          <nav className="nav-links">
+            <a href="#concept">Concept</a>
+            <a href="#features">Features</a>
+            <a href="#developer">Developer</a>
+          </nav>
+
+          <a href="https://github.com/Sakshamraina07/AutoReach" target="_blank" rel="noreferrer" className="btn btn-secondary github-btn">
             <Github size={18} />
             GitHub
           </a>
@@ -137,6 +144,7 @@ const App = () => {
               </div>
 
               <motion.div 
+                id="concept"
                 className="app-preview"
                 initial={{ opacity: 0, y: 40 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -176,7 +184,7 @@ const App = () => {
           </div>
         </section>
 
-        <section className="built-by">
+        <section id="developer" className="built-by">
           <div className="container">
             <motion.div 
               className="founder-card"
