@@ -40,22 +40,24 @@ const processQueue = async () => {
             .eq('user_id', user.id)
             .single();
 
-        console.log('[Debug] user.id:', user.id);
-        console.log('[Debug] smtpSettings:', smtpSettings);
-        console.log('[Debug] smtpError:', smtpError);
-
         if (!smtpSettings) {
             console.log(`[Queue] User ${user.email} has no Gmail connected. Skipping.`);
             isProcessing = false;
             return;
         }
 
+        // ✅ Fixed transporter — explicit host/port instead of service:'gmail'
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
             auth: {
                 user: smtpSettings.gmail_user,
                 pass: smtpSettings.gmail_app_password,
             },
+            tls: {
+                rejectUnauthorized: false
+            }
         });
 
         const isBypassed = BYPASS_WARMUP_EMAILS.includes(user.email);

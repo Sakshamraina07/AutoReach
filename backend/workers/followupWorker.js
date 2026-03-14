@@ -41,7 +41,7 @@ const processFollowups = async () => {
             const hasOpened = emailHistory?.some(h => h.opened_at !== null);
             if (hasOpened) continue;
 
-            // ✅ FIXED: Use admin auth API instead of .from('users')
+            // ✅ Use admin auth API to get user
             const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(recruiter.user_id);
 
             if (userError || !user) {
@@ -49,7 +49,8 @@ const processFollowups = async () => {
                 continue;
             }
 
-            const { data: smtpSettings } = await supabase
+            // ✅ Use supabaseAdmin to bypass RLS on smtp settings
+            const { data: smtpSettings } = await supabaseAdmin
                 .from('user_smtp_settings')
                 .select('*')
                 .eq('user_id', user.id)
@@ -60,12 +61,18 @@ const processFollowups = async () => {
                 continue;
             }
 
+            // ✅ Fixed transporter — explicit host/port instead of service:'gmail'
             const transporter = nodemailer.createTransport({
-                service: 'gmail',
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false,
                 auth: {
                     user: smtpSettings.gmail_user,
                     pass: smtpSettings.gmail_app_password,
                 },
+                tls: {
+                    rejectUnauthorized: false
+                }
             });
 
             const nextFollowupType = recruiter.followup_count === 0 ? 'followup_1' : 'followup_2';
