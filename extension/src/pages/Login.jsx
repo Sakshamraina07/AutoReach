@@ -12,14 +12,14 @@ function Login() {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                     </svg>
                 </div>
-                
+
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900 tracking-tight">AutoReach</h1>
                     <p className="text-slate-500 mt-2 text-sm leading-relaxed">Cold email automation designed for students and recruiters.</p>
                 </div>
 
                 <div className="w-full space-y-3 pt-4">
-                    <button 
+                    <button
                         onClick={signInWithGoogle}
                         className="w-full relative flex items-center justify-center py-3.5 px-4 border border-slate-300 rounded-lg shadow-sm bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200"
                     >
@@ -31,7 +31,7 @@ function Login() {
                         </svg>
                         Continue with Google
                     </button>
-                    
+
                     <p className="text-xs text-slate-400 mt-6">
                         By continuing, you acknowledge that you are using this tool responsibly.
                     </p>

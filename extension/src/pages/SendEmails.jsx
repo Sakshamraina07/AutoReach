@@ -48,7 +48,7 @@ function SendEmails() {
             <h2 className="text-xl font-bold text-slate-900 mb-6 tracking-tight">Send Campaigns</h2>
 
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 flex flex-col items-center text-center space-y-6">
-                
+
                 <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-2">
                     <svg className="w-10 h-10 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -73,8 +73,8 @@ function SendEmails() {
                 </div>
 
                 <div className="w-full pt-4">
-                    <button 
-                        onClick={handleStart} 
+                    <button
+                        onClick={handleStart}
                         disabled={loading || sending}
                         className="w-full py-3 px-4 flex items-center justify-center gap-2 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all"
                     >
@@ -92,7 +92,7 @@ function SendEmails() {
                     {message}
                 </div>
             )}
-            
+
             <p className="text-xs text-center text-slate-400 mt-6 mt-auto">
                 Ensure extensions are fully configured before starting. Background workers will process pending recruiters sequentially.
             </p>

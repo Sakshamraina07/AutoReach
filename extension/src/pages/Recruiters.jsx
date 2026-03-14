@@ -140,13 +140,13 @@ function AddModal({ onClose, refresh }) {
                 </div>
                 <form onSubmit={handleSubmit} className="p-4 space-y-3">
                     {error && <div className="text-xs text-red-600 bg-red-50 p-2 rounded">{error}</div>}
-                    <div><label className="text-xs font-medium text-slate-600">Company *</label><input required className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.company} onChange={(e) => setForm({...form, company: e.target.value})} /></div>
-                    <div><label className="text-xs font-medium text-slate-600">Name</label><input className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.hr_name} onChange={(e) => setForm({...form, hr_name: e.target.value})} placeholder="e.g. John Doe" /></div>
-                    <div><label className="text-xs font-medium text-slate-600">Email *</label><input type="email" required className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.email} onChange={(e) => setForm({...form, email: e.target.value})} /></div>
-                    <div><label className="text-xs font-medium text-slate-600">Role</label><input className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.role} onChange={(e) => setForm({...form, role: e.target.value})} placeholder="e.g. University Recruiter" /></div>
+                    <div><label className="text-xs font-medium text-slate-600">Company *</label><input required className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} /></div>
+                    <div><label className="text-xs font-medium text-slate-600">Name</label><input className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.hr_name} onChange={(e) => setForm({ ...form, hr_name: e.target.value })} placeholder="e.g. John Doe" /></div>
+                    <div><label className="text-xs font-medium text-slate-600">Email *</label><input type="email" required className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+                    <div><label className="text-xs font-medium text-slate-600">Role</label><input className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500 focus:border-blue-500" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="e.g. University Recruiter" /></div>
                     <div>
                         <label className="text-xs font-medium text-slate-600">Source</label>
-                        <select className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500" value={form.source} onChange={(e) => setForm({...form, source: e.target.value})}>
+                        <select className="w-full mt-1 px-3 py-2 border rounded-md text-sm border-slate-300 focus:ring-blue-500" value={form.source} onChange={(e) => setForm({ ...form, source: e.target.value })}>
                             <option value="manual">Manual Entry</option>
                             <option value="linkedin">LinkedIn</option>
                             <option value="company_site">Company Website</option>
@@ -197,7 +197,7 @@ function ImportModal({ onClose, refresh }) {
                         Upload a CSV containing <code className="bg-slate-100 px-1 rounded text-pink-600">Company</code> and <code className="bg-slate-100 px-1 rounded text-pink-600">Email</code>. Optional: Name, Role. Generic/domain emails are filtered automatically.
                     </p>
                     <input type="file" accept=".csv" onChange={e => setFile(e.target.files[0])} className="text-sm block w-full file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
-                    
+
                     {message && <div className={`text-xs p-2 rounded ${message.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{message}</div>}
 
                     <button onClick={handleImport} disabled={!file || loading} className="w-full py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50">

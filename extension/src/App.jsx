@@ -54,9 +54,8 @@ function NavItem({ to, icon, label, exact }) {
             to={to}
             end={exact}
             className={({ isActive }) =>
-                `flex flex-col items-center justify-center p-2 rounded-lg transition-colors cursor-pointer ${
-                    isActive 
-                    ? 'bg-blue-50 text-blue-600' 
+                `flex flex-col items-center justify-center p-2 rounded-lg transition-colors cursor-pointer ${isActive
+                    ? 'bg-blue-50 text-blue-600'
                     : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                 }`
             }

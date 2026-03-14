@@ -5,6 +5,11 @@ import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
 
+// ✅ Catch unhandled rejections so we can see exact crash reason
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[CRASH] Unhandled Rejection:', JSON.stringify(reason, null, 2));
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -20,12 +25,14 @@ import hrRoutes from './routes/hr.js';
 import emailRoutes from './routes/email.js';
 import resumeRoutes from './routes/resume.js';
 import trackRoutes from './routes/track.js';
+import settingsRoutes from './routes/settings.js';
 
 app.use('/user', userRoutes);
 app.use('/hr', hrRoutes);
 app.use('/email', emailRoutes);
 app.use('/resume', resumeRoutes);
 app.use('/track', trackRoutes);
+app.use('/settings', settingsRoutes);
 
 // Health Check
 app.get('/', (req, res) => {
@@ -35,7 +42,7 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
-    
+
     // Initialize Workers
     import('./workers/queueWorker.js');
     import('./workers/followupWorker.js');

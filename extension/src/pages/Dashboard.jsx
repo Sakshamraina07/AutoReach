@@ -27,7 +27,7 @@ function Dashboard() {
     return (
         <div className="p-6 h-screen bg-slate-50 flex flex-col">
             <h2 className="text-xl font-bold text-slate-900 mb-6">Overview</h2>
-            
+
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 flex flex-col items-center justify-center min-h-[120px]">
                     <span className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-2">Sent Today</span>

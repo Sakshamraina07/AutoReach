@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
                     setSession(existingSession);
                     setUser(existingSession.user ?? null);
                 } else {
-                    const stored = await new Promise(resolve => 
+                    const stored = await new Promise(resolve =>
                         chrome.storage.local.get(['access_token', 'refresh_token'], resolve)
                     );
 
