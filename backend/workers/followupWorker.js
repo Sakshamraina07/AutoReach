@@ -4,22 +4,6 @@ import { compileTemplate, getRandomDelay } from '../services/emailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-    },
-});
-
-transporter.verify((error) => {
-    if (error) {
-        console.error('[Followup Worker] Gmail SMTP connection failed:', error.message);
-    } else {
-        console.log('[Followup Worker] ✅ Gmail SMTP ready');
-    }
-});
-
 let isProcessingFollowups = false;
 
 const processFollowups = async () => {
@@ -67,6 +51,27 @@ const processFollowups = async () => {
                 console.error('[Followup Worker] Could not find user:', recruiter.user_id);
                 continue;
             }
+
+            // ✅ Fetch user's own Gmail SMTP credentials
+            const { data: smtpSettings } = await supabase
+                .from('user_smtp_settings')
+                .select('*')
+                .eq('user_id', user.id)
+                .single();
+
+            if (!smtpSettings) {
+                console.log(`[Followup Worker] User ${user.email} has no Gmail connected. Skipping.`);
+                continue;
+            }
+
+            // ✅ Create transporter dynamically per user
+            const transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user: smtpSettings.gmail_user,
+                    pass: smtpSettings.gmail_app_password,
+                },
+            });
 
             const nextFollowupType = recruiter.followup_count === 0 ? 'followup_1' : 'followup_2';
 
@@ -121,7 +126,7 @@ const processFollowups = async () => {
 
             try {
                 await transporter.sendMail({
-                    from: `"${user.name || 'Saksham Raina'}" <${process.env.GMAIL_USER}>`,
+                    from: `"${user.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
                     to: recruiter.email,
                     subject,
                     html: body.replace(/\n/g, '<br/>'),
@@ -134,7 +139,7 @@ const processFollowups = async () => {
                 }).eq('id', recruiter.id);
 
                 await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email}`);
+                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} via ${smtpSettings.gmail_user}`);
 
             } catch (err) {
                 console.error('[Followup Worker] Send failed:', err.message);
