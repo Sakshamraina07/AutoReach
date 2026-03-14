@@ -35,15 +35,67 @@ const App = () => {
       description: "Automated daily warmup limits that gradually increase to protect your sender reputation."
     }
   ];
-  const screenshots = [
-    { src: "/screenshots/home.png", label: "Dashboard Overview" },
-    { src: "/screenshots/recruiters.png", label: "Recruiter Database" },
-    { src: "/screenshots/templates.png", label: "Template Management" },
-    { src: "/screenshots/send.png", label: "Campaign Automation" },
-    { src: "/screenshots/setup.png", label: "Easy Setup & OAuth" },
-  ];
+  const SmartConsole = () => (
+    <div className="console-wrapper">
+      <div className="console-header">
+        <div className="dots">
+          <span></span><span></span><span></span>
+        </div>
+        <div className="console-title">AutoReach Engine v1.0.4</div>
+      </div>
+      <div className="console-content">
+        <div className="console-grid">
+          <div className="stat-card">
+            <span className="stat-label">DAILY_OUTREACH</span>
+            <div className="stat-value">18 <span className="stat-unit">/ 50</span></div>
+            <div className="stat-progress">
+              <motion.div 
+                className="progress-bar"
+                initial={{ width: 0 }}
+                animate={{ width: '36%' }}
+                transition={{ duration: 1.5, ease: "easeOut" }}
+              />
+            </div>
+          </div>
+          <div className="stat-card accent">
+            <span className="stat-label">ENGINE_STATUS</span>
+            <div className="status-indicator">
+              <span className="pulse-dot"></span>
+              ACTIVE
+            </div>
+            <div className="stat-subtext">Precision Delays: 30-90s</div>
+          </div>
+        </div>
+        
+        <div className="activity-feed">
+          <div className="feed-header">RECENT_LOGS</div>
+          <div className="log-entries">
+            <div className="log-entry">
+              <span className="log-time">[01:52:10]</span>
+              <span className="log-msg">GMAIL_SYNC: Connected as sakshamraina16@gmail.com</span>
+            </div>
+            <div className="log-entry">
+              <span className="log-time">[01:54:33]</span>
+              <span className="log-msg">QUEUE: Initializing follow-up sequence [SET_1]</span>
+            </div>
+            <div className="log-entry success">
+              <span className="log-time">[01:58:12]</span>
+              <span className="log-msg">SUCCESS: Outreach sent to gsrprasad@7hillsbiz.com</span>
+            </div>
+            <div className="log-entry">
+              <span className="log-time">[02:01:05]</span>
+              <span className="log-msg">WAITING: Human-like delay (42s) remaining...</span>
+            </div>
+          </div>
+        </div>
 
-  const [activeSlide, setActiveSlide] = React.useState(0);
+        <div className="console-footer">
+          <div className="footer-tag">SECURE_OAUTH_2.0</div>
+          <div className="footer-tag">SUPABASE_DB_SYNC</div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="landing-page">
@@ -90,33 +142,7 @@ const App = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                <div className="carousel-container">
-                  <div className="carousel-main">
-                    <motion.img 
-                      key={activeSlide}
-                      src={screenshots[activeSlide].src} 
-                      alt={screenshots[activeSlide].label}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="preview-img"
-                    />
-                    <div className="carousel-caption">
-                      {screenshots[activeSlide].label}
-                    </div>
-                  </div>
-                  <div className="carousel-thumbs">
-                    {screenshots.map((s, i) => (
-                      <button 
-                        key={i} 
-                        className={`thumb ${activeSlide === i ? 'active' : ''}`}
-                        onClick={() => setActiveSlide(i)}
-                      >
-                        <div className="thumb-dot"></div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <SmartConsole />
               </motion.div>
             </motion.div>
           </div>
