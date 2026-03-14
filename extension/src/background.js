@@ -1,113 +1,100 @@
 // ✅ Background service worker for AutoReach
 
-// ----------------------------------------
-// 🔁 Keep-Alive (prevents MV3 service worker from dying mid-flow)
-// ----------------------------------------
 const keepAlive = () => setInterval(() => chrome.runtime.getPlatformInfo(() => { }), 20000);
 chrome.runtime.onStartup.addListener(keepAlive);
 keepAlive();
 
-// ----------------------------------------
-// 🚀 On Install
-// ----------------------------------------
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[AutoReach] Extension Installed');
-
-  // ✅ Open side panel on install so user sees it immediately
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => console.error('[AutoReach] sidePanel error:', error));
 });
 
-// ----------------------------------------
-// 🔐 OAuth Message Handler
-// ----------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
-  // --- Google OAuth Flow ---
+  // 1. Supabase Auth OAuth (unchanged)
   if (message.type === 'SIGN_IN_WITH_GOOGLE') {
-    console.log('[Background] Starting OAuth flow...');
+    if (!message.url) { sendResponse({ error: 'No OAuth URL provided' }); return true; }
 
-    // ✅ Validate URL before launching
-    if (!message.url) {
-      console.error('[Background] No OAuth URL provided');
-      sendResponse({ error: 'No OAuth URL provided' });
-      return true;
-    }
+    chrome.identity.launchWebAuthFlow({ url: message.url, interactive: true }, (responseUrl) => {
+      if (chrome.runtime.lastError) { sendResponse({ error: chrome.runtime.lastError.message }); return; }
+      if (!responseUrl) { sendResponse({ error: 'OAuth cancelled' }); return; }
 
-    chrome.identity.launchWebAuthFlow(
-      {
-        url: message.url,
-        interactive: true,
-      },
-      (responseUrl) => {
-        // ✅ Handle Chrome runtime errors
-        if (chrome.runtime.lastError) {
-          console.error('[Background] launchWebAuthFlow error:', chrome.runtime.lastError.message);
-          sendResponse({ error: chrome.runtime.lastError.message });
-          return;
-        }
+      try {
+        const hashFragment = responseUrl.split('#')[1];
+        if (!hashFragment) { sendResponse({ error: 'No hash fragment' }); return; }
 
-        // ✅ Handle empty/undefined responseUrl
-        if (!responseUrl) {
-          console.error('[Background] No response URL returned — user may have cancelled');
-          sendResponse({ error: 'OAuth cancelled or no response URL' });
-          return;
-        }
+        const params = new URLSearchParams(hashFragment);
+        const access_token = params.get('access_token');
+        if (!access_token) { sendResponse({ error: 'Missing access_token' }); return; }
 
-        console.log('[Background] Response URL received ✅');
-
-        try {
-          // Tokens are in the HASH fragment:
-          // https://xxx.chromiumapp.org/#access_token=...&refresh_token=...
-          const hashFragment = responseUrl.split('#')[1];
-
-          if (!hashFragment) {
-            console.error('[Background] No hash fragment in response URL');
-            sendResponse({ error: 'No hash fragment in response URL' });
-            return;
-          }
-
-          const params = new URLSearchParams(hashFragment);
-          const access_token = params.get('access_token');
-          const refresh_token = params.get('refresh_token');
-          const expires_in = params.get('expires_in');
-          const token_type = params.get('token_type');
-
-          console.log('[Background] access_token exists:', !!access_token);
-          console.log('[Background] refresh_token exists:', !!refresh_token);
-
-          if (!access_token) {
-            console.error('[Background] Missing access_token in hash fragment');
-            sendResponse({ error: 'Missing access_token in redirect URL' });
-            return;
-          }
-
-          // ✅ Send all token data back to AuthContext
-          sendResponse({
-            access_token,
-            refresh_token: refresh_token ?? null,
-            expires_in: expires_in ? parseInt(expires_in) : null,
-            token_type: token_type ?? 'bearer',
-          });
-
-        } catch (err) {
-          console.error('[Background] Token parsing error:', err);
-          sendResponse({ error: err.message });
-        }
+        sendResponse({
+          access_token,
+          refresh_token: params.get('refresh_token') ?? null,
+          expires_in: params.get('expires_in') ? parseInt(params.get('expires_in')) : null,
+          token_type: params.get('token_type') ?? 'bearer',
+        });
+      } catch (err) {
+        sendResponse({ error: err.message });
       }
-    );
-
-    return true; // ✅ Keep message channel open for async sendResponse
+    });
+    return true;
   }
 
-  // --- Sign Out Handler (clear chrome storage) ---
+  // 2. Gmail OAuth (NEW — separate from Supabase login)
+  if (message.type === 'CONNECT_GMAIL') {
+    const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com'; // 🔁 Replace
+    const REDIRECT_URI = chrome.identity.getRedirectURL();
+
+    const scope = [
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/userinfo.email',
+    ].join(' ');
+
+    const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    authUrl.searchParams.set('client_id', GOOGLE_CLIENT_ID);
+    authUrl.searchParams.set('redirect_uri', REDIRECT_URI);
+    authUrl.searchParams.set('response_type', 'code');
+    authUrl.searchParams.set('scope', scope);
+    authUrl.searchParams.set('access_type', 'offline');
+    authUrl.searchParams.set('prompt', 'consent');
+
+    chrome.identity.launchWebAuthFlow({ url: authUrl.toString(), interactive: true }, async (responseUrl) => {
+      if (chrome.runtime.lastError) { sendResponse({ error: chrome.runtime.lastError.message }); return; }
+      if (!responseUrl) { sendResponse({ error: 'Gmail OAuth cancelled' }); return; }
+
+      try {
+        const url = new URL(responseUrl);
+        const code = url.searchParams.get('code');
+        if (!code) { sendResponse({ error: 'No authorization code returned' }); return; }
+
+        const apiUrl = message.apiUrl || 'https://autoreach-production.up.railway.app';
+        const tokenRes = await fetch(`${apiUrl}/settings/gmail/exchange`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${message.supabaseToken}`,
+          },
+          body: JSON.stringify({ code, redirect_uri: REDIRECT_URI }),
+        });
+
+        const tokenData = await tokenRes.json();
+        if (!tokenRes.ok) { sendResponse({ error: tokenData.error || 'Token exchange failed' }); return; }
+
+        sendResponse({ success: true, gmail_user: tokenData.gmail_user });
+      } catch (err) {
+        sendResponse({ error: err.message });
+      }
+    });
+    return true;
+  }
+
+  // 3. Sign Out
   if (message.type === 'SIGN_OUT') {
     chrome.storage.local.clear(() => {
       if (chrome.runtime.lastError) {
-        console.error('[Background] Sign out clear error:', chrome.runtime.lastError);
         sendResponse({ error: chrome.runtime.lastError.message });
       } else {
-        console.log('[Background] Storage cleared on sign out ✅');
         sendResponse({ success: true });
       }
     });

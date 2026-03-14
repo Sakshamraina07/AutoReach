@@ -1,6 +1,6 @@
-import nodemailer from 'nodemailer';
 import { supabase, supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay } from '../services/emailService.js';
+import { getValidGmailToken, sendViaGmail } from '../services/gmailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -41,7 +41,6 @@ const processFollowups = async () => {
             const hasOpened = emailHistory?.some(h => h.opened_at !== null);
             if (hasOpened) continue;
 
-            // ✅ Use admin auth API to get user
             const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(recruiter.user_id);
 
             if (userError || !user) {
@@ -49,31 +48,16 @@ const processFollowups = async () => {
                 continue;
             }
 
-            // ✅ Use supabaseAdmin to bypass RLS on smtp settings
             const { data: smtpSettings } = await supabaseAdmin
                 .from('user_smtp_settings')
                 .select('*')
                 .eq('user_id', user.id)
                 .single();
 
-            if (!smtpSettings) {
+            if (!smtpSettings || !smtpSettings.gmail_access_token) {
                 console.log(`[Followup Worker] User ${user.email} has no Gmail connected. Skipping.`);
                 continue;
             }
-
-            // ✅ Nodemailer transporter using user's own Gmail
-            const transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 587,
-                secure: false,
-                auth: {
-                    user: smtpSettings.gmail_user,
-                    pass: smtpSettings.gmail_app_password,
-                },
-                tls: {
-                    rejectUnauthorized: false
-                }
-            });
 
             const nextFollowupType = recruiter.followup_count === 0 ? 'followup_1' : 'followup_2';
 
@@ -89,8 +73,8 @@ const processFollowups = async () => {
                 continue;
             }
 
-            let subject = compileTemplate(template.subject, recruiter, user);
-            let body = compileTemplate(template.body, recruiter, user);
+            let subject = compileTemplate(template.subject, recruiter, user.user_metadata);
+            let body = compileTemplate(template.body, recruiter, user.user_metadata);
 
             const { data: historyEntry, error: historyError } = await supabase
                 .from('email_history')
@@ -118,8 +102,10 @@ const processFollowups = async () => {
                     const response = await fetch(user.user_metadata.resume_url);
                     if (response.ok) {
                         const arrayBuffer = await response.arrayBuffer();
-                        const buffer = Buffer.from(arrayBuffer);
-                        attachments.push({ filename: 'Resume.pdf', content: buffer });
+                        attachments.push({
+                            filename: 'Resume.pdf',
+                            content: Buffer.from(arrayBuffer).toString('base64'),
+                        });
                     }
                 } catch (err) {
                     console.error('[Followup Worker] Could not attach resume:', err);
@@ -127,12 +113,16 @@ const processFollowups = async () => {
             }
 
             try {
-                await transporter.sendMail({
-                    from: `"${user.user_metadata?.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
+                const accessToken = await getValidGmailToken(user.id, smtpSettings);
+
+                await sendViaGmail({
+                    accessToken,
+                    fromName: user.user_metadata?.name || smtpSettings.gmail_user,
+                    fromEmail: smtpSettings.gmail_user,
                     to: recruiter.email,
                     subject,
-                    html: body.replace(/\n/g, '<br/>'),
-                    attachments: attachments.length > 0 ? attachments : undefined,
+                    htmlBody: body.replace(/\n/g, '<br/>'),
+                    attachments,
                 });
 
                 await supabase.from('recruiters').update({
@@ -141,7 +131,7 @@ const processFollowups = async () => {
                 }).eq('id', recruiter.id);
 
                 await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} via ${smtpSettings.gmail_user}`);
+                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} via Gmail (${smtpSettings.gmail_user})`);
 
             } catch (err) {
                 console.error('[Followup Worker] Send failed:', err.message);

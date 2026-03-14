@@ -35,6 +35,9 @@ export const getRandomDelay = (minSeconds = 30, maxSeconds = 90) => {
     return Math.floor(Math.random() * (max - min + 1) + min);
 };
 
+/**
+ * Calculates email warmup limits based on account age.
+ */
 export const getWarmupLimit = (userCreatedAt) => {
     if (!userCreatedAt) return 5;
     const now = new Date();

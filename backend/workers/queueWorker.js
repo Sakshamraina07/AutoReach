@@ -1,6 +1,6 @@
-import { Resend } from 'resend';
 import { supabase, supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/emailService.js';
+import { getValidGmailToken, sendViaGmail } from '../services/gmailService.js';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -38,8 +38,9 @@ const processQueue = async () => {
             .eq('user_id', user.id)
             .single();
 
-        if (!smtpSettings) {
+        if (!smtpSettings || !smtpSettings.gmail_access_token) {
             console.log(`[Queue] User ${user.email} has no Gmail connected. Skipping.`);
+            await supabase.from('recruiters').update({ status: 'Skipped' }).eq('id', nextRecruiter.id);
             isProcessing = false;
             return;
         }
@@ -83,8 +84,8 @@ const processQueue = async () => {
             return;
         }
 
-        let subject = compileTemplate(template.subject, nextRecruiter, user);
-        let body = compileTemplate(template.body, nextRecruiter, user);
+        let subject = compileTemplate(template.subject, nextRecruiter, user.user_metadata);
+        let body = compileTemplate(template.body, nextRecruiter, user.user_metadata);
 
         const { data: historyEntry, error: historyError } = await supabase
             .from('email_history')
@@ -113,10 +114,9 @@ const processQueue = async () => {
                 const response = await fetch(user.user_metadata.resume_url);
                 if (response.ok) {
                     const arrayBuffer = await response.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
                     attachments.push({
                         filename: 'Resume.pdf',
-                        content: buffer.toString('base64'),
+                        content: Buffer.from(arrayBuffer).toString('base64'),
                     });
                 }
             } catch (err) {
@@ -125,17 +125,17 @@ const processQueue = async () => {
         }
 
         try {
-            // ✅ Resend initialized here so dotenv is already loaded
-            const resend = new Resend(process.env.RESEND_API_KEY);
-            const { error: sendError } = await resend.emails.send({
-                from: `${user.user_metadata?.name || 'AutoReach'} <onboarding@resend.dev>`,
+            const accessToken = await getValidGmailToken(user.id, smtpSettings);
+
+            await sendViaGmail({
+                accessToken,
+                fromName: user.user_metadata?.name || 'AutoReach',
+                fromEmail: smtpSettings.gmail_user,
                 to: nextRecruiter.email,
                 subject,
-                html: body.replace(/\n/g, '<br/>'),
-                attachments: attachments.length > 0 ? attachments : undefined,
+                htmlBody: body.replace(/\n/g, '<br/>'),
+                attachments,
             });
-
-            if (sendError) throw new Error(sendError.message);
 
             await supabase.from('recruiters').update({
                 status: 'Sent',
@@ -143,10 +143,10 @@ const processQueue = async () => {
             }).eq('id', nextRecruiter.id);
 
             await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-            console.log(`[Queue] Sent email to ${nextRecruiter.email} via Resend`);
+            console.log(`[Queue] ✅ Sent email to ${nextRecruiter.email} via Gmail (${smtpSettings.gmail_user})`);
 
         } catch (sendError) {
-            console.error('[Resend Error]', sendError.message);
+            console.error('[Queue Send Error]', sendError.message);
             const retryCount = historyEntry.retry_count || 0;
             if (retryCount < 3) {
                 await supabase.from('email_history').update({
