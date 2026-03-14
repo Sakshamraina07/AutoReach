@@ -79,7 +79,7 @@ const processQueue = async () => {
                 return;
             }
         } else {
-            console.log(`[Queue] ⚡ Warmup bypass active for ${user.email}`);
+            console.log(`[Queue] Warmup bypass active for ${user.email}`);
         }
 
         const { data: template } = await supabase
@@ -148,7 +148,7 @@ const processQueue = async () => {
             }).eq('id', nextRecruiter.id);
 
             await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-            console.log(`[Queue] ✅ Sent email to ${nextRecruiter.email} via ${smtpSettings.gmail_user}`);
+            console.log(`[Queue] Sent email to ${nextRecruiter.email} via ${smtpSettings.gmail_user}`);
 
         } catch (sendError) {
             console.error('[Gmail Error]', sendError.message);
@@ -159,7 +159,6 @@ const processQueue = async () => {
                     error_message: sendError.message,
                     retry_count: retryCount + 1,
                 }).eq('id', historyEntry.id);
-                console.log(`[Queue] Failed send. Will retry. (${retryCount + 1}/3)`);
             } else {
                 await supabase.from('email_history').update({
                     status: 'abandoned',
