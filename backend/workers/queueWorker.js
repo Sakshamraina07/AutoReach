@@ -4,7 +4,7 @@ import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/ema
 import dotenv from 'dotenv';
 dotenv.config();
 
-const BYPASS_WARMUP_EMAILS = ['sakshamraina16@gmail.com'];
+const BYPASS_WARMUP_EMAILS = ['sakshamraina16@gmail.com', 'sakshamraina1601@gmail.com'];
 
 let isProcessing = false;
 
