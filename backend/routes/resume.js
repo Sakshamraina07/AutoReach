@@ -16,7 +16,7 @@ router.post('/upload', requireAuth, upload.single('resume'), async (req, res) =>
         const fileName = `${req.user.id}-${Date.now()}.${fileExt}`;
         const filePath = `${fileName}`;
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
             .from('resumes')
             .upload(filePath, req.file.buffer, {
                 contentType: req.file.mimetype,
