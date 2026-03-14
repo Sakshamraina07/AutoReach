@@ -35,6 +35,15 @@ const App = () => {
       description: "Automated daily warmup limits that gradually increase to protect your sender reputation."
     }
   ];
+  const screenshots = [
+    { src: "/screenshots/home.png", label: "Dashboard Overview" },
+    { src: "/screenshots/recruiters.png", label: "Recruiter Database" },
+    { src: "/screenshots/templates.png", label: "Template Management" },
+    { src: "/screenshots/send.png", label: "Campaign Automation" },
+    { src: "/screenshots/setup.png", label: "Easy Setup & OAuth" },
+  ];
+
+  const [activeSlide, setActiveSlide] = React.useState(0);
 
   return (
     <div className="landing-page">
@@ -81,15 +90,32 @@ const App = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                {/* Visual placeholder for the extension UI */}
-                <div style={{ background: '#1e293b', padding: '40px', borderRadius: '16px', textAlign: 'left', border: '1px solid #334155' }}>
-                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                     <div style={{ height: '20px', width: '150px', background: '#334155', borderRadius: '4px' }}></div>
-                     <div style={{ height: '20px', width: '80px', background: '#334155', borderRadius: '4px' }}></div>
-                   </div>
-                   <div style={{ height: '200px', width: '100%', background: 'rgba(59, 130, 246, 0.05)', border: '1px dashed rgba(59, 130, 246, 0.2)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ color: '#3b82f6', fontWeight: 600 }}>[ Dashboard Preview ]</span>
-                   </div>
+                <div className="carousel-container">
+                  <div className="carousel-main">
+                    <motion.img 
+                      key={activeSlide}
+                      src={screenshots[activeSlide].src} 
+                      alt={screenshots[activeSlide].label}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="preview-img"
+                    />
+                    <div className="carousel-caption">
+                      {screenshots[activeSlide].label}
+                    </div>
+                  </div>
+                  <div className="carousel-thumbs">
+                    {screenshots.map((s, i) => (
+                      <button 
+                        key={i} 
+                        className={`thumb ${activeSlide === i ? 'active' : ''}`}
+                        onClick={() => setActiveSlide(i)}
+                      >
+                        <div className="thumb-dot"></div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </motion.div>
             </motion.div>
