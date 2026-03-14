@@ -6,6 +6,7 @@ keepAlive();
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[AutoReach] Extension Installed');
+  console.log('[AutoReach] Redirect URI:', chrome.identity.getRedirectURL());
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
     .catch((error) => console.error('[AutoReach] sidePanel error:', error));
 });
@@ -43,8 +44,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // 2. Gmail OAuth (NEW — separate from Supabase login)
   if (message.type === 'CONNECT_GMAIL') {
-    const GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com'; // 🔁 Replace
+    const GOOGLE_CLIENT_ID = '865030703352-08belajskesjt2fcqbi91tnfi4ld1bsu.apps.googleusercontent.com';
     const REDIRECT_URI = chrome.identity.getRedirectURL();
+
+    console.log('[AutoReach] Gmail OAuth Redirect URI:', REDIRECT_URI);
 
     const scope = [
       'https://www.googleapis.com/auth/gmail.send',
