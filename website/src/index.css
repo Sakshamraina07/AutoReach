@@ -76,7 +76,7 @@ header {
 
 /* Hero Section */
 .hero {
-  padding: 10rem 0 6rem;
+  padding: 12rem 0 8rem;
   text-align: center;
   position: relative;
 }
@@ -130,8 +130,9 @@ h1 {
 
 .cta-group {
   display: flex;
-  gap: 1rem;
+  gap: 1.5rem;
   justify-content: center;
+  margin-bottom: 5rem;
 }
 
 .btn {
@@ -229,8 +230,8 @@ h1 {
 
 /* Smart Console UI */
 .console-wrapper {
-  max-width: 800px;
-  margin: 0 auto;
+  max-width: 900px;
+  margin: 4rem auto 0;
   background: #000;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.1);
