@@ -4,24 +4,7 @@ import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/ema
 import dotenv from 'dotenv';
 dotenv.config();
 
-// ✅ Add your email here to bypass warmup limits during testing
 const BYPASS_WARMUP_EMAILS = ['sakshamraina16@gmail.com'];
-
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-    },
-});
-
-transporter.verify((error) => {
-    if (error) {
-        console.error('[Queue] Gmail SMTP connection failed:', error.message);
-    } else {
-        console.log('[Queue] ✅ Gmail SMTP ready');
-    }
-});
 
 let isProcessing = false;
 
@@ -53,7 +36,26 @@ const processQueue = async () => {
             return;
         }
 
-        // ✅ Bypass warmup limit for test accounts
+        const { data: smtpSettings } = await supabase
+            .from('user_smtp_settings')
+            .select('*')
+            .eq('user_id', user.id)
+            .single();
+
+        if (!smtpSettings) {
+            console.log(`[Queue] User ${user.email} has no Gmail connected. Skipping.`);
+            isProcessing = false;
+            return;
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: smtpSettings.gmail_user,
+                pass: smtpSettings.gmail_app_password,
+            },
+        });
+
         const isBypassed = BYPASS_WARMUP_EMAILS.includes(user.email);
 
         if (!isBypassed) {
@@ -133,7 +135,7 @@ const processQueue = async () => {
 
         try {
             await transporter.sendMail({
-                from: `"${user.name || 'Saksham Raina'}" <${process.env.GMAIL_USER}>`,
+                from: `"${user.name || smtpSettings.gmail_user}" <${smtpSettings.gmail_user}>`,
                 to: nextRecruiter.email,
                 subject,
                 html: body.replace(/\n/g, '<br/>'),
@@ -146,7 +148,7 @@ const processQueue = async () => {
             }).eq('id', nextRecruiter.id);
 
             await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-            console.log(`[Queue] ✅ Sent email to ${nextRecruiter.email}`);
+            console.log(`[Queue] ✅ Sent email to ${nextRecruiter.email} via ${smtpSettings.gmail_user}`);
 
         } catch (sendError) {
             console.error('[Gmail Error]', sendError.message);
