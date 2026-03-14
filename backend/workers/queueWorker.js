@@ -4,7 +4,6 @@ import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/ema
 import dotenv from 'dotenv';
 dotenv.config();
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const BYPASS_WARMUP_EMAILS = ['sakshamraina16@gmail.com', 'sakshamraina1601@gmail.com'];
 
 let isProcessing = false;
@@ -25,7 +24,6 @@ const processQueue = async () => {
         if (recError && recError.code !== 'PGRST116') throw recError;
         if (!nextRecruiter) { isProcessing = false; return; }
 
-        // ✅ Use admin auth API to get user
         const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(nextRecruiter.user_id);
 
         if (userError || !user) {
@@ -34,7 +32,6 @@ const processQueue = async () => {
             return;
         }
 
-        // ✅ Use supabaseAdmin to bypass RLS on smtp settings
         const { data: smtpSettings } = await supabaseAdmin
             .from('user_smtp_settings')
             .select('*')
@@ -110,7 +107,6 @@ const processQueue = async () => {
         const trackingUrl = `${process.env.API_URL || 'https://autoreach-pjez.onrender.com'}/track/${historyEntry.id}`;
         body += `<br><img src="${trackingUrl}" width="1" height="1" style="display:none;" />`;
 
-        // ✅ Build attachments
         let attachments = [];
         if (user.user_metadata?.resume_url) {
             try {
@@ -129,7 +125,8 @@ const processQueue = async () => {
         }
 
         try {
-            // ✅ Send via Resend instead of nodemailer
+            // ✅ Resend initialized here so dotenv is already loaded
+            const resend = new Resend(process.env.RESEND_API_KEY);
             const { error: sendError } = await resend.emails.send({
                 from: `${user.user_metadata?.name || smtpSettings.gmail_user} <onboarding@resend.dev>`,
                 to: nextRecruiter.email,
