@@ -514,6 +514,93 @@ footer {
   color: var(--text-secondary);
 }
 
+/* Privacy Policy Page Styles */
+.privacy-page {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+.privacy-page header {
+  position: sticky;
+  top: 0;
+  background: rgba(2, 6, 23, 0.9);
+}
+
+.hero-mini {
+  padding: 8rem 0 4rem;
+  text-align: center;
+  background: radial-gradient(circle at 50% 0%, var(--primary-glow) 0%, transparent 70%);
+}
+
+.legal-text {
+  padding: 4rem 0 8rem;
+}
+
+.narrow {
+  max-width: 800px;
+}
+
+.policy-section {
+  margin-bottom: 3rem;
+}
+
+.policy-section h2 {
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+  color: var(--primary-color);
+}
+
+.policy-section h3 {
+  font-size: 1.25rem;
+  margin: 2rem 0 1rem;
+  color: #f1f5f9;
+}
+
+.policy-section p {
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: 1rem;
+}
+
+.policy-section ul {
+  padding-left: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.policy-section li {
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  line-height: 1.6;
+}
+
+.highlight-box {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 4px solid var(--primary-color);
+  padding: 1.5rem;
+  border-radius: 0 12px 12px 0;
+  margin: 2rem 0;
+}
+
+.highlight-box p {
+  margin-bottom: 0;
+  color: #e2e8f0;
+}
+
+.policy-section a {
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+.policy-section a:hover {
+  color: #60a5fa;
+}
+
+@media (max-width: 768px) {
+  .hero-mini h1 { font-size: 2.5rem; }
+  .policy-section h2 { font-size: 1.75rem; }
+}
+
 /* Built By Section */
 .built-by {
   padding: 8rem 0;

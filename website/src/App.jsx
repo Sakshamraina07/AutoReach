@@ -1,8 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Download, Zap, Shield, Mail, MousePointer2, Settings, CheckCircle2, Github, Linkedin } from 'lucide-react';
+import { Routes, Route, Link } from 'react-router-dom';
+import Privacy from './Privacy';
 
-const App = () => {
+const Home = () => {
   const features = [
     {
       icon: <Zap size={24} />,
@@ -122,7 +124,7 @@ const App = () => {
   );
 
   return (
-    <div className="landing-page">
+    <>
       <header>
         <div className="container nav-content">
           <div className="logo">
@@ -299,8 +301,22 @@ const App = () => {
       <footer>
         <div className="container">
           <p>© 2026 AutoReach. Built for precision outreach.</p>
+          <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center', gap: '2rem' }}>
+            <Link to="/privacy" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }}>Privacy Policy</Link>
+          </div>
         </div>
       </footer>
+    </>
+  );
+};
+
+const App = () => {
+  return (
+    <div className="landing-page">
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/privacy" element={<Privacy />} />
+      </Routes>
     </div>
   );
 };
