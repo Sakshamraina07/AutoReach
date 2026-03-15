@@ -35,6 +35,30 @@ const App = () => {
       description: "Automated daily warmup limits that gradually increase to protect your sender reputation."
     }
   ];
+
+  const steps = [
+    {
+      number: "01",
+      title: "Secure Authentication",
+      description: "Connect your Gmail account via Google OAuth 2.0. No passwords shared, just a secure, direct link to your inbox."
+    },
+    {
+      number: "02",
+      title: "Import Your Lead List",
+      description: "Upload your CSV of recruiters or HR contacts. Our engine automatically filters invalid domains and duplicates."
+    },
+    {
+      number: "03",
+      title: "Craft Your Template",
+      description: "Set up your personalized outreach message with dynamic tags like {name} and {company} for a personal touch."
+    },
+    {
+      number: "04",
+      title: "Automate with Precision",
+      description: "Launch the engine. Human-like delays (30-90s) and daily limits ensure your emails land in the primary inbox."
+    }
+  ];
+
   const SmartConsole = () => (
     <div className="console-wrapper">
       <div className="console-header">
@@ -109,6 +133,7 @@ const App = () => {
           <nav className="nav-links">
             <a href="#concept">Concept</a>
             <a href="#features">Features</a>
+            <a href="#how-it-works">How it Works</a>
             <a href="#developer">Developer</a>
           </nav>
 
@@ -178,6 +203,34 @@ const App = () => {
                   </div>
                   <h3>{f.title}</h3>
                   <p>{f.description}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="how-it-works" className="how-it-works">
+          <div className="container">
+            <div className="section-head">
+              <h2>How AutoReach Works</h2>
+              <p className="subtitle">From connection to connection. A seamless flow designed for high-impact outreach.</p>
+            </div>
+
+            <div className="steps-container">
+              {steps.map((s, i) => (
+                <motion.div 
+                  key={i}
+                  className="step-card"
+                  initial={{ opacity: 0, x: i % 2 === 0 ? -20 : 20 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.15 }}
+                >
+                  <div className="step-number">{s.number}</div>
+                  <div className="step-content">
+                    <h3>{s.title}</h3>
+                    <p>{s.description}</p>
+                  </div>
                 </motion.div>
               ))}
             </div>

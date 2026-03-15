@@ -452,7 +452,61 @@ h1 {
   .console-content { padding: 1.5rem; }
 }
 
-/* Footer */
+/* How it Works Section */
+.how-it-works {
+  padding: 8rem 0;
+  position: relative;
+}
+
+.steps-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 2.5rem;
+  margin-top: 4rem;
+  position: relative;
+}
+
+.step-card {
+  padding: 3rem 2rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 24px;
+  backdrop-filter: var(--glass-effect);
+  position: relative;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.step-card:hover {
+  border-color: var(--secondary-color);
+  transform: translateY(-5px);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.step-number {
+  font-size: 4rem;
+  font-weight: 900;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  opacity: 0.05;
+  color: var(--text-primary);
+  pointer-events: none;
+}
+
+.step-card h3 {
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+  color: var(--secondary-color);
+}
+
+.step-card p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* Footer (existing) */
 footer {
   padding: 4rem 0;
   border-top: 1px solid var(--border-color);
