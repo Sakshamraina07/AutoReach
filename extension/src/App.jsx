@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
+import logo from './assets/logo.png';
 
 function App() {
     const { user, loading, signOut } = useAuth();
@@ -19,10 +20,7 @@ function App() {
             {/* Header */}
             <header className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm z-10 w-full">
                 <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-                    </div>
-                    <span className="font-bold text-lg tracking-tight text-slate-800">AutoReach</span>
+                    <img src={logo} alt="AutoReach" className="h-8 w-auto object-contain" />
                 </div>
                 <button onClick={signOut} className="text-xs text-slate-500 hover:text-slate-800 font-medium px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors">
                     Sign Out
