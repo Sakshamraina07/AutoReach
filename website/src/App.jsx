@@ -4,7 +4,7 @@ import { Download, Zap, Shield, Mail, MousePointer2, Settings, CheckCircle2, Git
 import { Routes, Route, Link } from 'react-router-dom';
 import Privacy from './Privacy';
 
-const LOGO = '/logo.png';
+const LOGO = '/logo.png?v=1.0.2';
 
 const Home = () => {
   const features = [

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const LOGO = '/logo.png';
+const LOGO = '/logo.png?v=1.0.2';
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
