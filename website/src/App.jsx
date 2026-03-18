@@ -180,6 +180,27 @@ const Home = () => {
               >
                 <SmartConsole />
               </motion.div>
+
+              <motion.div 
+                className="demo-video-container"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+                style={{ marginTop: '4rem', width: '100%', maxWidth: '800px', margin: '4rem auto 0' }}
+              >
+                <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '1rem', border: '1px solid var(--border-color)', boxShadow: 'var(--card-shadow)' }}>
+                  <iframe 
+                    width="100%" 
+                    height="100%" 
+                    src="https://www.youtube.com/embed/YOug_Lsap-E" 
+                    title="AutoReach Demo" 
+                    frameBorder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen
+                    style={{ position: 'absolute', top: 0, left: 0 }}
+                  ></iframe>
+                </div>
+              </motion.div>
             </motion.div>
           </div>
         </section>
