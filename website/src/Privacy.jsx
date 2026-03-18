@@ -21,7 +21,7 @@ const Privacy = () => {
       <header>
         <div className="container nav-content">
           <Link to="/" className="logo">
-            <img src={LOGO} alt="AutoReach Logo" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
+            <img src={LOGO} alt="AutoReach Logo" style={{ height: '100px', width: 'auto', objectFit: 'contain' }} />
           </Link>
           <nav className="nav-links">
             <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
