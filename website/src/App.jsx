@@ -3,7 +3,8 @@ import { motion } from 'framer-motion';
 import { Download, Shield, Mail, MousePointer2, Settings, CheckCircle2, Github, Linkedin } from 'lucide-react';
 import { Routes, Route, Link } from 'react-router-dom';
 import Privacy from './Privacy';
-import logo from './assets/logo.png';
+
+const LOGO = '/logo.png';
 
 const Home = () => {
   const features = [
@@ -129,7 +130,7 @@ const Home = () => {
       <header>
         <div className="container nav-content">
           <div className="logo">
-            <img src={logo} alt="AutoReach Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
+            <img src={LOGO} alt="AutoReach Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
           </div>
           
           <nav className="nav-links">

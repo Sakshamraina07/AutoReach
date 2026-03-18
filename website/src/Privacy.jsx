@@ -2,7 +2,8 @@ import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import logo from './assets/logo.png';
+
+const LOGO = '/logo.png';
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
@@ -20,7 +21,7 @@ const Privacy = () => {
       <header>
         <div className="container nav-content">
           <Link to="/" className="logo">
-            <img src={logo} alt="AutoReach Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
+            <img src={LOGO} alt="AutoReach Logo" style={{ height: '36px', width: 'auto', objectFit: 'contain' }} />
           </Link>
           <nav className="nav-links">
             <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
