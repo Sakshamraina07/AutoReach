@@ -18,9 +18,9 @@ function App() {
     return (
         <div className="flex flex-col h-screen w-full bg-white overflow-hidden text-slate-800">
             {/* Header */}
-            <header className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm z-10 w-full">
+            <header className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-1 flex items-center justify-between shadow-sm z-10 w-full">
                 <div className="flex items-center gap-2">
-                    <img src={`${logo}?v=1.0.2`} alt="AutoReach" className="h-20 w-auto object-contain" />
+                    <img src={`${logo}?v=1.0.2`} alt="AutoReach" className="h-10 w-auto object-contain" />
                 </div>
                 <button onClick={signOut} className="text-xs text-slate-500 hover:text-slate-800 font-medium px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors">
                     Sign Out

@@ -53,7 +53,7 @@ header {
   top: 0;
   left: 0;
   right: 0;
-  padding: 1.5rem 0;
+  padding: 0.4rem 0;
   z-index: 1000;
   backdrop-filter: var(--glass-effect);
   background: rgba(2, 6, 23, 0.7);

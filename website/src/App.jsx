@@ -130,7 +130,7 @@ const Home = () => {
       <header>
         <div className="container nav-content">
           <div className="logo">
-            <img src={LOGO} alt="AutoReach Logo" style={{ height: '100px', width: 'auto', objectFit: 'contain' }} />
+            <img src={LOGO} alt="AutoReach Logo" style={{ height: '60px', width: 'auto', objectFit: 'contain' }} />
           </div>
           
           <nav className="nav-links">
