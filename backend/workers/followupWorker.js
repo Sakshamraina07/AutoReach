@@ -35,11 +35,17 @@ const processFollowups = async () => {
         for (const recruiter of eligibleRecruiters) {
             const { data: emailHistory } = await supabase
                 .from('email_history')
-                .select('opened_at, status')
-                .eq('recruiter_id', recruiter.id);
+                .select('opened_at, status, gmail_message_id, gmail_thread_id')
+                .eq('recruiter_id', recruiter.id)
+                .order('sent_at', { ascending: true });
 
             const hasOpened = emailHistory?.some(h => h.opened_at !== null);
             if (hasOpened) continue;
+
+            // ✅ Get original message ID and thread ID for threading
+            const originalEmail = emailHistory?.find(h => h.gmail_message_id);
+            const replyToMessageId = originalEmail?.gmail_message_id || null;
+            const threadId = originalEmail?.gmail_thread_id || null;
 
             const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserById(recruiter.user_id);
 
@@ -75,6 +81,11 @@ const processFollowups = async () => {
 
             let subject = compileTemplate(template.subject, recruiter, user.user_metadata);
             let body = compileTemplate(template.body, recruiter, user.user_metadata);
+
+            // ✅ Prefix subject with Re: for threading
+            if (replyToMessageId && !subject.startsWith('Re:')) {
+                subject = `Re: ${subject}`;
+            }
 
             const { data: historyEntry, error: historyError } = await supabase
                 .from('email_history')
@@ -115,7 +126,8 @@ const processFollowups = async () => {
             try {
                 const accessToken = await getValidGmailToken(user.id, smtpSettings);
 
-                await sendViaGmail({
+                // ✅ Send as reply in same thread
+                const { messageId, threadId: newThreadId } = await sendViaGmail({
                     accessToken,
                     fromName: user.user_metadata?.name || smtpSettings.gmail_user,
                     fromEmail: smtpSettings.gmail_user,
@@ -123,6 +135,8 @@ const processFollowups = async () => {
                     subject,
                     htmlBody: body.replace(/\n/g, '<br/>'),
                     attachments,
+                    replyToMessageId,
+                    threadId,
                 });
 
                 await supabase.from('recruiters').update({
@@ -130,8 +144,14 @@ const processFollowups = async () => {
                     followup_count: recruiter.followup_count + 1,
                 }).eq('id', recruiter.id);
 
-                await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
-                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} via Gmail (${smtpSettings.gmail_user})`);
+                // ✅ Store new message ID and thread ID
+                await supabase.from('email_history').update({
+                    status: 'delivered',
+                    gmail_message_id: messageId,
+                    gmail_thread_id: newThreadId,
+                }).eq('id', historyEntry.id);
+
+                console.log(`[Followup Worker] ✅ Sent follow-up to ${recruiter.email} in same thread`);
 
             } catch (err) {
                 console.error('[Followup Worker] Send failed:', err.message);

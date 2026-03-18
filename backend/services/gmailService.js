@@ -1,9 +1,5 @@
 import { supabaseAdmin } from '../server.js';
 
-/**
- * Refreshes a Gmail OAuth access token using the stored refresh token.
- * Updates the new access token + expiry in user_smtp_settings.
- */
 export const refreshGmailToken = async (userId, refreshToken) => {
     const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
@@ -26,24 +22,14 @@ export const refreshGmailToken = async (userId, refreshToken) => {
 
     await supabaseAdmin
         .from('user_smtp_settings')
-        .update({
-            gmail_access_token: data.access_token,
-            token_expires_at: expiresAt,
-        })
+        .update({ gmail_access_token: data.access_token, token_expires_at: expiresAt })
         .eq('user_id', userId);
 
     return data.access_token;
 };
 
-/**
- * Returns a valid Gmail access token for a user.
- * Auto-refreshes if expired or about to expire (within 5 min).
- */
 export const getValidGmailToken = async (userId, smtpSettings) => {
-    const expiresAt = smtpSettings.token_expires_at
-        ? new Date(smtpSettings.token_expires_at)
-        : null;
-
+    const expiresAt = smtpSettings.token_expires_at ? new Date(smtpSettings.token_expires_at) : null;
     const isExpired = !expiresAt || expiresAt <= new Date(Date.now() + 5 * 60 * 1000);
 
     if (isExpired) {
@@ -57,18 +43,35 @@ export const getValidGmailToken = async (userId, smtpSettings) => {
     return smtpSettings.gmail_access_token;
 };
 
-/**
- * Sends an email via Gmail API using OAuth access token.
- */
-export const sendViaGmail = async ({ accessToken, fromName, fromEmail, to, subject, htmlBody, attachments = [] }) => {
+export const sendViaGmail = async ({
+    accessToken,
+    fromName,
+    fromEmail,
+    to,
+    subject,
+    htmlBody,
+    attachments = [],
+    replyToMessageId = null,
+    threadId = null,
+}) => {
     const boundary = `boundary_${Date.now()}`;
 
-    let mimeLines = [
+    const headers = [
         `From: "${fromName}" <${fromEmail}>`,
         `To: ${to}`,
         `Subject: ${subject}`,
         `MIME-Version: 1.0`,
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    ];
+
+    // ✅ Threading headers
+    if (replyToMessageId) {
+        headers.push(`In-Reply-To: <${replyToMessageId}>`);
+        headers.push(`References: <${replyToMessageId}>`);
+    }
+
+    let mimeLines = [
+        ...headers,
         ``,
         `--${boundary}`,
         `Content-Type: text/html; charset="UTF-8"`,
@@ -98,13 +101,16 @@ export const sendViaGmail = async ({ accessToken, fromName, fromEmail, to, subje
         .replace(/\//g, '_')
         .replace(/=+$/, '');
 
+    const requestBody = { raw: encodedMessage };
+    if (threadId) requestBody.threadId = threadId;
+
     const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
         method: 'POST',
         headers: {
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ raw: encodedMessage }),
+        body: JSON.stringify(requestBody),
     });
 
     const result = await response.json();
@@ -113,5 +119,8 @@ export const sendViaGmail = async ({ accessToken, fromName, fromEmail, to, subje
         throw new Error(result.error?.message || `Gmail API error: ${response.status}`);
     }
 
-    return result;
+    return {
+        messageId: result.id,
+        threadId: result.threadId,
+    };
 };

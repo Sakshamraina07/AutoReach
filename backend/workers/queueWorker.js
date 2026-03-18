@@ -127,7 +127,8 @@ const processQueue = async () => {
         try {
             const accessToken = await getValidGmailToken(user.id, smtpSettings);
 
-            await sendViaGmail({
+            // ✅ Returns messageId and threadId
+            const { messageId, threadId } = await sendViaGmail({
                 accessToken,
                 fromName: user.user_metadata?.name || 'AutoReach',
                 fromEmail: smtpSettings.gmail_user,
@@ -142,7 +143,13 @@ const processQueue = async () => {
                 last_sent_at: new Date().toISOString(),
             }).eq('id', nextRecruiter.id);
 
-            await supabase.from('email_history').update({ status: 'delivered' }).eq('id', historyEntry.id);
+            // ✅ Store Gmail message ID and thread ID
+            await supabase.from('email_history').update({
+                status: 'delivered',
+                gmail_message_id: messageId,
+                gmail_thread_id: threadId,
+            }).eq('id', historyEntry.id);
+
             console.log(`[Queue] ✅ Sent email to ${nextRecruiter.email} via Gmail (${smtpSettings.gmail_user})`);
 
         } catch (sendError) {
