@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin } from '../server.js';
+import { supabaseAdmin } from '../server.js';
 import { compileTemplate, getRandomDelay, getWarmupLimit } from '../services/emailService.js';
 import { getValidGmailToken, sendViaGmail } from '../services/gmailService.js';
 import dotenv from 'dotenv';
@@ -13,7 +13,7 @@ const processQueue = async () => {
     isProcessing = true;
 
     try {
-        const { data: nextRecruiter, error: recError } = await supabase
+        const { data: nextRecruiter, error: recError } = await supabaseAdmin
             .from('recruiters')
             .select('*')
             .eq('status', 'Pending')
@@ -40,7 +40,7 @@ const processQueue = async () => {
 
         if (!smtpSettings || !smtpSettings.gmail_access_token) {
             console.log(`[Queue] User ${user.email} has no Gmail connected. Skipping.`);
-            await supabase.from('recruiters').update({ status: 'Skipped' }).eq('id', nextRecruiter.id);
+            await supabaseAdmin.from('recruiters').update({ status: 'Skipped' }).eq('id', nextRecruiter.id);
             isProcessing = false;
             return;
         }
@@ -52,10 +52,10 @@ const processQueue = async () => {
             startOfDay.setHours(0, 0, 0, 0);
 
             const recruiterIds = (
-                await supabase.from('recruiters').select('id').eq('user_id', user.id)
+                await supabaseAdmin.from('recruiters').select('id').eq('user_id', user.id)
             ).data?.map(r => r.id) || [];
 
-            const { count: userSentToday } = await supabase
+            const { count: userSentToday } = await supabaseAdmin
                 .from('email_history')
                 .select('id', { count: 'exact', head: true })
                 .gte('sent_at', startOfDay.toISOString())
@@ -71,7 +71,7 @@ const processQueue = async () => {
             console.log(`[Queue] Warmup bypass active for ${user.email}`);
         }
 
-        const { data: template } = await supabase
+        const { data: template } = await supabaseAdmin
             .from('email_templates')
             .select('*')
             .eq('user_id', user.id)
@@ -87,7 +87,7 @@ const processQueue = async () => {
         let subject = compileTemplate(template.subject, nextRecruiter, user.user_metadata);
         let body = compileTemplate(template.body, nextRecruiter, user.user_metadata);
 
-        const { data: historyEntry, error: historyError } = await supabase
+        const { data: historyEntry, error: historyError } = await supabaseAdmin
             .from('email_history')
             .insert([{
                 recruiter_id: nextRecruiter.id,
@@ -127,7 +127,6 @@ const processQueue = async () => {
         try {
             const accessToken = await getValidGmailToken(user.id, smtpSettings);
 
-            // ✅ Returns messageId and threadId
             const { messageId, threadId } = await sendViaGmail({
                 accessToken,
                 fromName: user.user_metadata?.name || 'AutoReach',
@@ -138,13 +137,12 @@ const processQueue = async () => {
                 attachments,
             });
 
-            await supabase.from('recruiters').update({
+            await supabaseAdmin.from('recruiters').update({
                 status: 'Sent',
                 last_sent_at: new Date().toISOString(),
             }).eq('id', nextRecruiter.id);
 
-            // ✅ Store Gmail message ID and thread ID
-            await supabase.from('email_history').update({
+            await supabaseAdmin.from('email_history').update({
                 status: 'delivered',
                 gmail_message_id: messageId,
                 gmail_thread_id: threadId,
@@ -156,17 +154,17 @@ const processQueue = async () => {
             console.error('[Queue Send Error]', sendError.message);
             const retryCount = historyEntry.retry_count || 0;
             if (retryCount < 3) {
-                await supabase.from('email_history').update({
+                await supabaseAdmin.from('email_history').update({
                     status: 'failed',
                     error_message: sendError.message,
                     retry_count: retryCount + 1,
                 }).eq('id', historyEntry.id);
             } else {
-                await supabase.from('email_history').update({
+                await supabaseAdmin.from('email_history').update({
                     status: 'abandoned',
                     error_message: sendError.message,
                 }).eq('id', historyEntry.id);
-                await supabase.from('recruiters').update({ status: 'Failed' }).eq('id', nextRecruiter.id);
+                await supabaseAdmin.from('recruiters').update({ status: 'Failed' }).eq('id', nextRecruiter.id);
             }
         }
 
