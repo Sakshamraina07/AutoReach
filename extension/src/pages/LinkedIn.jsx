@@ -26,19 +26,28 @@ function LinkedIn() {
     setMessage('');
     setGeneratedEmail(null);
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const activeTab = tabs[0];
-      if (!activeTab?.url?.includes('linkedin.com/in/')) {
+      // Query ALL tabs to find LinkedIn profile
+      const allTabs = await chrome.tabs.query({});
+      const linkedInTab = allTabs.find(tab => 
+        tab.url?.includes('linkedin.com/in/')
+      );
+
+      if (!linkedInTab) {
         setMessage('Please open a LinkedIn profile page first.');
         setStep('idle');
         return;
       }
-      const response = await chrome.tabs.sendMessage(activeTab.id, { type: 'SCRAPE_LINKEDIN_PROFILE' });
+
+      const response = await chrome.tabs.sendMessage(linkedInTab.id, { 
+        type: 'SCRAPE_LINKEDIN_PROFILE' 
+      });
+
       if (!response?.success || !response?.data?.name) {
-        setMessage('Could not scrape profile. Make sure you are on a LinkedIn profile page.');
+        setMessage('Could not scrape profile. Try refreshing the LinkedIn page.');
         setStep('idle');
         return;
       }
+
       setProfile(response.data);
       setStep('idle');
     } catch (err) {
