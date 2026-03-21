@@ -10,15 +10,27 @@ function guessEmail(fullName, company, headline) {
 
     let companyName = company;
 
-    // Extract from headline with @ sign e.g. "Specialist @Korn Ferry supporting Google"
+    if (companyName && companyName.toLowerCase() === 'about') {
+        companyName = '';
+    }
+
     if (!companyName && headline && headline.includes('@')) {
         const afterAt = headline.split('@')[1];
         companyName = afterAt.split(/\s+supporting\s+/i)[0].trim();
     }
 
-    // Extract from headline with "at" e.g. "Specialist at Korn Ferry"
+    if (!companyName && headline && headline.includes(' - ')) {
+        const afterDash = headline.split(' - ')[1];
+        if (afterDash) {
+            companyName = afterDash.split(/\s+supporting\s+/i)[0]
+                .split('||')[0].trim();
+        }
+    }
+
     if (!companyName && headline && headline.toLowerCase().includes(' at ')) {
-        companyName = headline.split(/ at /i)[1].split(/\s+supporting\s+/i)[0].trim();
+        companyName = headline.split(/ at /i)[1]
+            .split(/\s+supporting\s+/i)[0]
+            .split('||')[0].trim();
     }
 
     const domain = (companyName || '')
@@ -44,36 +56,47 @@ router.post('/guess-email', requireAuth, async (req, res) => {
         let recruiterEmail = null;
         let emailSource = '';
 
-        // ── Step 1: Try Apollo API ──
-        if (process.env.APOLLO_API_KEY) {
+        // ── Step 1: Try Hunter.io API ──
+        if (process.env.HUNTER_API_KEY) {
             try {
                 const nameParts = profile.name.trim().split(' ');
                 const firstName = nameParts[0] || '';
                 const lastName = nameParts.slice(1).join(' ') || '';
 
-                const apolloRes = await fetch('https://api.apollo.io/v1/people/match', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Api-Key': process.env.APOLLO_API_KEY,
-                    },
-                    body: JSON.stringify({
-                        first_name: firstName,
-                        last_name: lastName,
-                        organization_name: company || headline,
-                        linkedin_url: profile.profileUrl || '',
-                    }),
-                });
+                // Get domain from company name
+                let companyForHunter = company || '';
+                if (!companyForHunter && headline) {
+                    if (headline.includes('@')) {
+                        companyForHunter = headline.split('@')[1]
+                            .split(/\s+supporting\s+/i)[0].trim();
+                    } else if (headline.includes(' - ')) {
+                        companyForHunter = headline.split(' - ')[1]
+                            .split(/\s+supporting\s+/i)[0]
+                            .split('||')[0].trim();
+                    } else if (headline.toLowerCase().includes(' at ')) {
+                        companyForHunter = headline.split(/ at /i)[1]
+                            .split(/\s+supporting\s+/i)[0]
+                            .split('||')[0].trim();
+                    }
+                }
 
-                const apolloData = await apolloRes.json();
+                // Hunter Email Finder API
+                const hunterUrl = new URL('https://api.hunter.io/v2/email-finder');
+                hunterUrl.searchParams.set('first_name', firstName);
+                hunterUrl.searchParams.set('last_name', lastName);
+                hunterUrl.searchParams.set('company', companyForHunter);
+                hunterUrl.searchParams.set('api_key', process.env.HUNTER_API_KEY);
 
-                if (apolloData?.person?.email) {
-                    recruiterEmail = apolloData.person.email;
-                    emailSource = 'Apollo API (verified)';
-                    console.log(`[LinkedIn] Apollo found: ${recruiterEmail}`);
+                const hunterRes = await fetch(hunterUrl.toString());
+                const hunterData = await hunterRes.json();
+
+                if (hunterData?.data?.email) {
+                    recruiterEmail = hunterData.data.email;
+                    emailSource = `Hunter.io (${hunterData.data.confidence}% confidence)`;
+                    console.log(`[LinkedIn] Hunter found: ${recruiterEmail}`);
                 }
             } catch (err) {
-                console.error('[LinkedIn] Apollo error:', err.message);
+                console.error('[LinkedIn] Hunter error:', err.message);
             }
         }
 
