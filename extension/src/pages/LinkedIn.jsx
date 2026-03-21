@@ -5,6 +5,7 @@ function LinkedIn() {
   const [profile, setProfile] = useState(null);
   const [targetRole, setTargetRole] = useState('');
   const [guessedEmail, setGuessedEmail] = useState(null);
+  const [manualEmail, setManualEmail] = useState('');
   const [emailSource, setEmailSource] = useState('');
   const [addingToQueue, setAddingToQueue] = useState(false);
   const [message, setMessage] = useState('');
@@ -16,6 +17,7 @@ function LinkedIn() {
         setProfile(msg.data);
         setStep('idle');
         setGuessedEmail(null);
+        setManualEmail('');
         setTargetRole('');
         setMessage('');
       }
@@ -28,6 +30,7 @@ function LinkedIn() {
     setStep('scraping');
     setMessage('');
     setGuessedEmail(null);
+    setManualEmail('');
     setTargetRole('');
     try {
       const result = await new Promise((resolve) => {
@@ -42,11 +45,15 @@ function LinkedIn() {
         return;
       }
 
-      // Auto guess email immediately after scrape
-      const response = await api.post('/linkedin/guess-email', { profile: profileData });
-      if (response.data.success) {
-        setGuessedEmail(response.data.email);
-        setEmailSource(response.data.emailSource);
+      // Auto guess email
+      try {
+        const response = await api.post('/linkedin/guess-email', { profile: profileData });
+        if (response.data.success && response.data.email) {
+          setGuessedEmail(response.data.email);
+          setEmailSource(response.data.emailSource);
+        }
+      } catch (e) {
+        // Email guess failed silently — user will enter manually
       }
 
       setProfile(profileData);
@@ -58,8 +65,9 @@ function LinkedIn() {
   };
 
   const handleAddToQueue = async () => {
-    if (!guessedEmail) {
-      setMessage('Could not guess email. Add this recruiter manually in the DB tab.');
+    const finalEmail = guessedEmail || manualEmail.trim();
+    if (!finalEmail) {
+      setMessage('Please enter the recruiter email.');
       return;
     }
     if (!targetRole.trim()) {
@@ -71,14 +79,15 @@ function LinkedIn() {
       await api.post('/hr/add', {
         hr_name: profile.name,
         company: profile.company || 'Unknown',
-        email: guessedEmail,
+        email: finalEmail,
         role: targetRole.trim(),
         source: 'linkedin',
       });
-      setMessage('✅ Added to queue! Email will be sent automatically using your template.');
+      setMessage('✅ Added to queue! Email will be sent using your template.');
       setStep('idle');
       setProfile(null);
       setGuessedEmail(null);
+      setManualEmail('');
       setTargetRole('');
     } catch (err) {
       setMessage('Failed to add: ' + (err.response?.data?.error || err.message));
@@ -91,7 +100,7 @@ function LinkedIn() {
     <div className="p-4 h-screen overflow-y-auto bg-slate-50">
       <h2 className="text-xl font-bold text-slate-900 mb-1">LinkedIn Outreach</h2>
       <p className="text-xs text-slate-500 mb-5">
-        Open a LinkedIn recruiter profile → Scrape → Enter target role → Add to queue. Your email template handles the rest.
+        Open a LinkedIn recruiter profile → Scrape → Enter role → Add to queue. Your email template handles the rest.
       </p>
 
       {/* Step 1 — Scrape */}
@@ -121,45 +130,77 @@ function LinkedIn() {
             {guessedEmail && (
               <p className="text-xs text-green-600 font-mono mt-1">📧 {guessedEmail}</p>
             )}
-            {!guessedEmail && (
-              <p className="text-xs text-amber-600 mt-1">⚠️ Could not guess email — add manually in DB tab</p>
-            )}
             <p className="text-xs text-green-600 font-medium mt-1">✅ Profile scraped</p>
           </div>
         )}
       </div>
 
-      {/* Step 2 — Target Role */}
-      {profile && guessedEmail && (
+      {/* Step 2 — Email + Role */}
+      {profile && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
           <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
             <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">2</span>
-            What role are you applying for?
+            Enter Details
           </h3>
-          <input
-            type="text"
-            value={targetRole}
-            onChange={(e) => setTargetRole(e.target.value)}
-            placeholder="e.g. Software Engineer Intern"
-            className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-          />
-          <p className="text-xs text-slate-400 mt-1">This fills the {'{role}'} variable in your email template</p>
+
+          {/* Email field — show if not guessed */}
+          {!guessedEmail && (
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Recruiter Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                placeholder="recruiter@company.com"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-amber-600 mt-1">⚠️ Could not auto-guess email — enter manually</p>
+            </div>
+          )}
+
+          {/* Show guessed email with option to override */}
+          {guessedEmail && (
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-slate-700 mb-1">Recruiter Email</label>
+              <input
+                type="email"
+                value={manualEmail || guessedEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-green-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-green-50"
+              />
+              <p className="text-xs text-green-600 mt-1">✅ Auto-guessed — edit if incorrect</p>
+            </div>
+          )}
+
+          {/* Role field */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Target Role <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              value={targetRole}
+              onChange={(e) => setTargetRole(e.target.value)}
+              placeholder="e.g. Software Engineer Intern"
+              className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">Fills the {'{role}'} variable in your template</p>
+          </div>
         </div>
       )}
 
       {/* Step 3 — Add to Queue */}
-      {profile && guessedEmail && (
+      {profile && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
-          <h3 className="text-sm font-semibold text-slate-800 mb-1 flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
             <span className="bg-blue-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">3</span>
             Add to AutoReach Queue
           </h3>
-          <p className="text-xs text-slate-500 mb-3">
-            Sends to: <span className="font-mono text-blue-600">{guessedEmail}</span>
-          </p>
           <button
             onClick={handleAddToQueue}
-            disabled={addingToQueue || !targetRole.trim()}
+            disabled={addingToQueue || (!guessedEmail && !manualEmail.trim()) || !targetRole.trim()}
             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
             {addingToQueue ? (
@@ -168,9 +209,6 @@ function LinkedIn() {
               <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>Add to Queue & Send</>
             )}
           </button>
-          {!targetRole.trim() && (
-            <p className="text-xs text-amber-600 mt-2 text-center">⚠️ Enter target role above first</p>
-          )}
         </div>
       )}
 
