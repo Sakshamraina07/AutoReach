@@ -26,29 +26,53 @@ function LinkedIn() {
     setMessage('');
     setGeneratedEmail(null);
     try {
-      // Query ALL tabs to find LinkedIn profile
-      const allTabs = await chrome.tabs.query({});
-      const linkedInTab = allTabs.find(tab => 
-        tab.url?.includes('linkedin.com/in/')
-      );
-
-      if (!linkedInTab) {
+      // Use scripting API to inject and run scraper directly
+      const tabs = await chrome.tabs.query({ url: 'https://www.linkedin.com/in/*' });
+      
+      if (!tabs || tabs.length === 0) {
         setMessage('Please open a LinkedIn profile page first.');
         setStep('idle');
         return;
       }
 
-      const response = await chrome.tabs.sendMessage(linkedInTab.id, { 
-        type: 'SCRAPE_LINKEDIN_PROFILE' 
+      const linkedInTab = tabs[0];
+
+      // Execute scraper directly in the tab
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: linkedInTab.id },
+        func: () => {
+          const getText = (selector) => {
+            const el = document.querySelector(selector);
+            return el ? el.innerText.trim() : '';
+          };
+          const getMultiple = (selector) => {
+            return Array.from(document.querySelectorAll(selector))
+              .map(el => el.innerText.trim()).filter(Boolean);
+          };
+          const name = getText('h1.text-heading-xlarge') || getText('h1');
+          const headline = getText('.text-body-medium.break-words') || '';
+          const experienceItems = getMultiple('#experience ~ .pvs-list__outer-container .pvs-entity__path-node');
+          const company = experienceItems[0] || (headline.includes(' at ') ? headline.split(' at ').pop() : '') || '';
+          const location = getText('.text-body-small.inline.t-black--light.break-words') || '';
+          const about = getText('#about ~ .pvs-list__outer-container .pvs-list__item--no-padding-in-columns span[aria-hidden="true"]') || getText('#about + div span') || '';
+          const recentPostEls = document.querySelectorAll('.feed-shared-update-v2__description span[dir="ltr"], .feed-shared-text span');
+          const recentPost = recentPostEls.length > 0 ? recentPostEls[0].innerText.trim().slice(0, 300) : '';
+          const roleTitles = getMultiple('#experience ~ .pvs-list__outer-container .t-bold span[aria-hidden="true"]');
+          const currentRole = roleTitles[0] || '';
+          const profileUrl = window.location.href.split('?')[0];
+          return { name, headline, company, currentRole, location, about: about.slice(0, 500), recentPost, profileUrl };
+        }
       });
 
-      if (!response?.success || !response?.data?.name) {
+      const profileData = results?.[0]?.result;
+
+      if (!profileData?.name) {
         setMessage('Could not scrape profile. Try refreshing the LinkedIn page.');
         setStep('idle');
         return;
       }
 
-      setProfile(response.data);
+      setProfile(profileData);
       setStep('idle');
     } catch (err) {
       setMessage('Scraping failed: ' + err.message);

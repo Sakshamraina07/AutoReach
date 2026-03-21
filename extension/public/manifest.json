@@ -39,7 +39,8 @@
     "storage",
     "identity",
     "scripting",
-    "tabs"
+    "tabs",
+    "activeTab"
   ],
   "host_permissions": [
     "https://autoreach-pjez.onrender.com/*",
