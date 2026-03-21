@@ -5,26 +5,48 @@ import { crx } from '@crxjs/vite-plugin'
 const manifest = {
   manifest_version: 3,
   name: "AutoReach - Cold Email Outreach",
-  version: "1.0.0",
+  version: "1.1.0",
   description: "Automate personalized cold emails to recruiters with smart follow-ups and tracking.",
-  action: { default_title: "Open AutoReach" },
+  icons: {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  action: {
+    default_title: "Open AutoReach",
+    default_icon: {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   background: {
     service_worker: "src/background.js",
     type: "module"
   },
   side_panel: { default_path: "index.html" },
+  content_scripts: [
+    {
+      matches: ["https://www.linkedin.com/in/*"],
+      js: ["src/linkedin-scraper.js"],
+      run_at: "document_idle"
+    }
+  ],
   permissions: [
     "sidePanel",
     "storage",
     "identity",
     "activeTab",
     "scripting",
+    "tabs"
   ],
   host_permissions: [
     "https://autoreach-pjez.onrender.com/*",
     "https://*.supabase.co/*",
     "https://accounts.google.com/*",
     "https://www.googleapis.com/*",
+    "https://autoreach-production.up.railway.app/*",
+    "https://www.linkedin.com/*"
   ],
   oauth2: {
     client_id: "865030703352-ie39225agct02nuf2nm8qehorq3sj28n.apps.googleusercontent.com",
@@ -46,7 +68,6 @@ export default defineConfig(({ mode }) => {
       react(),
       crx({ manifest }),
     ],
-    // ✅ Keep 'define' to ensure env vars are inlined everywhere
     define: {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
@@ -58,6 +79,5 @@ export default defineConfig(({ mode }) => {
         port: 5173,
       },
     },
-    // ✅ REMOVED rollupOptions.input override to let CRXJS manage the entry points safely
   }
 })
