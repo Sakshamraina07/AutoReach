@@ -1,7 +1,7 @@
 import express from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { emailSendLimiter } from '../middleware/rateLimiter.js';
-import { supabase, supabaseAdmin } from '../server.js';
+import { supabaseAdmin } from '../server.js';
 import { compileTemplate } from '../services/emailService.js';
 
 const router = express.Router();
@@ -10,12 +10,11 @@ router.post('/preview', requireAuth, async (req, res) => {
     try {
         const { templateType, recruiterData } = req.body;
 
-        // ✅ FIXED: Use admin auth API instead of .from('users')
         const { data: { user: userProfile }, error: userError } = await supabaseAdmin.auth.admin.getUserById(req.user.id);
 
         if (userError || !userProfile) return res.status(404).json({ error: 'User not found' });
 
-        const { data: template, error: tplError } = await supabase
+        const { data: template, error: tplError } = await supabaseAdmin
             .from('email_templates')
             .select('*')
             .eq('user_id', req.user.id)
@@ -45,12 +44,12 @@ router.get('/status', requireAuth, async (req, res) => {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
-        const { count, error } = await supabase
+        const { count, error } = await supabaseAdmin
             .from('email_history')
             .select('*', { count: 'exact', head: true })
             .gte('sent_at', startOfDay.toISOString())
             .in('recruiter_id', (
-                await supabase.from('recruiters').select('id').eq('user_id', req.user.id)
+                await supabaseAdmin.from('recruiters').select('id').eq('user_id', req.user.id)
             ).data?.map(r => r.id) || []);
 
         if (error) throw error;
@@ -71,7 +70,7 @@ router.post('/send', requireAuth, emailSendLimiter, async (req, res) => {
 
 router.get('/template/:type', requireAuth, async (req, res) => {
     try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('email_templates')
             .select('*')
             .eq('user_id', req.user.id)
@@ -88,7 +87,7 @@ router.post('/template', requireAuth, async (req, res) => {
     try {
         const { type, subject, body } = req.body;
 
-        const { data, error } = await supabase
+        const { data, error } = await supabaseAdmin
             .from('email_templates')
             .upsert({
                 user_id: req.user.id,
