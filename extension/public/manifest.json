@@ -29,7 +29,7 @@
         "https://www.linkedin.com/in/*"
       ],
       "js": [
-        "src/linkedin-scraper.js"
+        "linkedin-scraper.js"
       ],
       "run_at": "document_idle"
     }
