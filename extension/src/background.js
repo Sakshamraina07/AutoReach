@@ -42,7 +42,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // 2. Gmail OAuth (NEW — separate from Supabase login)
+  // 2. Gmail OAuth
   if (message.type === 'CONNECT_GMAIL') {
     const GOOGLE_CLIENT_ID = '865030703352-08belajskesjt2fcqbi91tnfi4ld1bsu.apps.googleusercontent.com';
     const REDIRECT_URI = chrome.identity.getRedirectURL();
@@ -92,7 +92,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // 3. Sign Out
+  // 3. ✅ NEW — Find LinkedIn tab ID
+  if (message.type === 'GET_LINKEDIN_TAB') {
+    chrome.tabs.query({}, (tabs) => {
+      const linkedInTab = tabs.find(t => t.url && t.url.includes('linkedin.com/in/'));
+      if (linkedInTab) {
+        sendResponse({ success: true, tabId: linkedInTab.id });
+      } else {
+        sendResponse({ success: false });
+      }
+    });
+    return true;
+  }
+
+  // 4. Sign Out
   if (message.type === 'SIGN_OUT') {
     chrome.storage.local.clear(() => {
       if (chrome.runtime.lastError) {
