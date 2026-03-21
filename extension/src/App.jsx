@@ -17,7 +17,6 @@ function App() {
 
     return (
         <div className="flex flex-col h-screen w-full bg-white overflow-hidden text-slate-800">
-            {/* Header */}
             <header className="flex-shrink-0 bg-white border-b border-slate-200 px-4 py-1 flex items-center justify-between shadow-sm z-10 w-full">
                 <div className="flex items-center gap-2">
                     <a href="https://auto-reach-ext.vercel.app" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
@@ -29,18 +28,17 @@ function App() {
                 </button>
             </header>
 
-            {/* Main scrollable content area */}
             <main className="flex-1 overflow-y-auto bg-slate-50 pb-[64px] w-full items-start">
                 <Outlet />
             </main>
 
-            {/* Bottom Navigation */}
             <nav className="fixed bottom-0 bg-white border-t border-slate-200 px-2 py-2 flex justify-between w-full h-[64px] z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <div className="grid grid-cols-5 w-full gap-1 items-center">
+                <div className="grid grid-cols-6 w-full gap-1 items-center">
                     <NavItem to="/" icon="Home" label="Home" exact />
                     <NavItem to="/recruiters" icon="Database" label="DB" />
                     <NavItem to="/templates" icon="PenTool" label="Templates" />
                     <NavItem to="/send" icon="Send" label="Send" />
+                    <NavItem to="/linkedin" icon="LinkedIn" label="LinkedIn" />
                     <NavItem to="/setup" icon="Settings" label="Setup" />
                 </div>
             </nav>
@@ -71,9 +69,10 @@ function NavItem({ to, icon, label, exact }) {
 function getIcon(name) {
     const icons = {
         Home: <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>,
-        Database: <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>,
+        Database: <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582 4-8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" /></svg>,
         PenTool: <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>,
         Send: <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>,
+        LinkedIn: <svg className="w-[22px] h-[22px]" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg>,
         Settings: <svg className="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
     };
     return icons[name] || icons.Home;

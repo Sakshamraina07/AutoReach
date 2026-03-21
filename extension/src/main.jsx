@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard.jsx'
 import Recruiters from './pages/Recruiters.jsx'
 import Template from './pages/Template.jsx'
 import SendEmails from './pages/SendEmails.jsx'
+import LinkedIn from './pages/LinkedIn.jsx'
 import Setup from './pages/Setup.jsx'
 import { AuthProvider } from './contexts/AuthContext.jsx'
 import './index.css'
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="recruiters" element={<Recruiters />} />
             <Route path="templates" element={<Template />} />
             <Route path="send" element={<SendEmails />} />
+            <Route path="linkedin" element={<LinkedIn />} />
             <Route path="setup" element={<Setup />} />
           </Route>
         </Routes>

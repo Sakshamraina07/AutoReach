@@ -40,6 +40,7 @@ import emailRoutes from './routes/email.js';
 import resumeRoutes from './routes/resume.js';
 import trackRoutes from './routes/track.js';
 import settingsRoutes from './routes/settings.js';
+import linkedinRoutes from './routes/linkedin.js';
 
 app.use('/user', userRoutes);
 app.use('/hr', hrRoutes);
@@ -47,6 +48,7 @@ app.use('/email', emailRoutes);
 app.use('/resume', resumeRoutes);
 app.use('/track', trackRoutes);
 app.use('/settings', settingsRoutes);
+app.use('/linkedin', linkedinRoutes);
 
 // Health Check
 app.get('/', (req, res) => {
