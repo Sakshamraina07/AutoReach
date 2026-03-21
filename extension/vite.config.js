@@ -4,8 +4,8 @@ import { crx } from '@crxjs/vite-plugin'
 
 const manifest = {
   manifest_version: 3,
-  name: "AutoReach - Cold Email Outreach",
-  version: "1.1.0",
+  name: "AutoReach V2.0 - Cold Email Outreach",
+  version: "2.0.0",
   description: "Automate personalized cold emails to recruiters with smart follow-ups and tracking.",
   icons: {
     "16": "icons/icon16.png",

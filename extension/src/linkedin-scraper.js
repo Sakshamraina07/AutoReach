@@ -14,40 +14,55 @@ const scrapeAndStore = () => {
   const headline = getText('.text-body-medium.break-words') || '';
   const location = getText('.text-body-small.inline.t-black--light.break-words') || '';
 
-  // ✅ Get company from Experience section — most reliable
-  const experienceSection = document.querySelector('#experience');
+  // ✅ Get company from Experience section
   let company = '';
+  const experienceSection = document.querySelector('#experience');
 
   if (experienceSection) {
-    // Try multiple selectors for company name in experience
-    const companySelectors = [
-      '#experience ~ .pvs-list__outer-container .t-14.t-normal.t-black--light span[aria-hidden="true"]',
-      '#experience ~ .pvs-list__outer-container .pv-entity__secondary-title span[aria-hidden="true"]',
-      '#experience + * .pvs-list__item--line-separated .t-14 span[aria-hidden="true"]',
-      '#experience ~ * li:first-child .t-14.t-normal span[aria-hidden="true"]',
-    ];
-
-    for (const selector of companySelectors) {
-      const el = document.querySelector(selector);
-      if (el && el.innerText.trim() && el.innerText.trim().length > 1) {
-        company = el.innerText.trim();
-        // Clean up — remove employment type like "Full-time", "Part-time"
-        company = company.split('·')[0].trim();
-        break;
-      }
-    }
-
-    // If still empty — try getting all text nodes from first experience item
-    if (!company) {
-      const firstExpItem = document.querySelector(
-        '#experience ~ .pvs-list__outer-container li:first-child'
+    let el = experienceSection.nextElementSibling;
+    while (el) {
+      // Get all spans with aria-hidden from experience items
+      const allSpans = el.querySelectorAll(
+        '.pvs-list__item--line-separated span[aria-hidden="true"]'
       );
-      if (firstExpItem) {
-        const allSpans = firstExpItem.querySelectorAll('span[aria-hidden="true"]');
-        // Second span is usually company name (first is job title)
-        if (allSpans.length >= 2) {
-          company = allSpans[1].innerText.trim().split('·')[0].trim();
-        }
+
+      for (const span of allSpans) {
+        const text = span.innerText.trim();
+
+        // Skip empty, too short, duration patterns, employment types
+        if (!text || text.length < 2) continue;
+        if (/^\d+\s*(yr|yrs|mos|month|year)/i.test(text)) continue;
+        if (/^(full-time|part-time|contract|internship|freelance|self-employed)/i.test(text)) continue;
+        if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}/i.test(text)) continue;
+        if (/^\d{4}\s*[-–]\s*(present|\d{4})/i.test(text)) continue;
+        if (/^(present|on-site|remote|hybrid)/i.test(text)) continue;
+
+        // First valid non-job-title span is likely the company
+        // Skip the first bold span (job title) — look for non-bold company name
+        const isBold = span.closest('.t-bold');
+        if (isBold) continue;
+
+        // This should be the company name
+        company = text.split('·')[0].trim();
+        if (company.length > 1) break;
+      }
+
+      if (company) break;
+
+      el = el.nextElementSibling;
+      if (!el || el.id === 'education') break;
+    }
+  }
+
+  // Fallback — try simpler selector if still empty
+  if (!company) {
+    const companyEl = document.querySelector(
+      '#experience ~ .pvs-list__outer-container li:first-child .t-14.t-normal.t-black--light span[aria-hidden="true"]'
+    );
+    if (companyEl) {
+      const raw = companyEl.innerText.trim();
+      if (raw && !/\d+\s*(yr|mos)/i.test(raw)) {
+        company = raw.split('·')[0].trim();
       }
     }
   }
