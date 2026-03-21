@@ -12,23 +12,18 @@ function guessEmail(fullName, company, headline) {
 
     // Extract from headline with @ sign e.g. "Specialist @Korn Ferry supporting Google"
     if (!companyName && headline && headline.includes('@')) {
-        companyName = headline.split('@')[1].split(' ')[0].trim();
+        const afterAt = headline.split('@')[1];
+        companyName = afterAt.split(/\s+supporting\s+/i)[0].trim();
     }
 
     // Extract from headline with "at" e.g. "Specialist at Korn Ferry"
     if (!companyName && headline && headline.toLowerCase().includes(' at ')) {
-        companyName = headline.split(/ at /i)[1].split(' supporting')[0].trim();
-    }
-
-    // Extract from headline with "supporting" e.g. "Specialist @Korn Ferry supporting Google"
-    if (!companyName && headline && headline.toLowerCase().includes('supporting')) {
-        const match = headline.match(/supporting\s+(\w+)/i);
-        if (match) companyName = match[1];
+        companyName = headline.split(/ at /i)[1].split(/\s+supporting\s+/i)[0].trim();
     }
 
     const domain = (companyName || '')
         .toLowerCase()
-        .replace(/\s+(india|pvt|ltd|limited|inc|corp|technologies|tech|solutions|services|consulting|group|global|international|software|systems|infosystems|infotech|supporting.*)\b.*/g, '')
+        .replace(/\s+(india|pvt|ltd|limited|inc|corp|technologies|tech|solutions|services|consulting|group|global|international|software|systems|infosystems|infotech)\b.*/g, '')
         .replace(/[^a-z0-9]/g, '')
         .trim();
 
