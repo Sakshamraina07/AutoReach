@@ -116,6 +116,9 @@ function injectedScraper() {
           if (t === 'Contact info') return false;
           if (/^\d[\d,]+\s*(followers|connections)/i.test(t)) return false;
           if (t.length < 2) return false;
+          // Filter out connection degree badges like "· 1st", "· 2nd", "· 3rd"
+          if (/^[·\s]*(1st|2nd|3rd)\+?$/i.test(t)) return false;
+          if (/^\d+(st|nd|rd|th)\+?$/i.test(t)) return false;
           return true;
         });
 
@@ -173,31 +176,35 @@ function injectedScraper() {
       if (el) location = el.innerText.trim();
     }
 
-    // --- Company: additional sources ---
+    // --- Company: prioritize link-based sources (most reliable) ---
 
-    // Source B: Company links
+    // Source A: Company links on profile card and page
     if (!company) {
-      const companyLinks = document.querySelectorAll(
-        '.pv-top-card--experience-list a[href*="/company/"], ' +
-        '.pv-text-details__right-panel a[href*="/company/"], ' +
-        'a[data-field="experience_company_logo"]'
-      );
-      for (const link of companyLinks) {
-        const t = link.innerText.trim().split('\n')[0].trim();
-        if (t && t.length > 1 && !/university|college|school|institute/i.test(t)) {
-          company = t;
-          confidence = 'high';
-          break;
+      const companyLinkSelectors = [
+        '.pv-top-card--experience-list a[href*="/company/"]',
+        '.pv-text-details__right-panel a[href*="/company/"]',
+        'a[data-field="experience_company_logo"]',
+      ];
+      for (const sel of companyLinkSelectors) {
+        const links = document.querySelectorAll(sel);
+        for (const link of links) {
+          const t = link.innerText.trim().split('\n')[0].trim();
+          if (t && t.length > 1 && !/university|college|school|institute/i.test(t)) {
+            company = t;
+            confidence = 'high';
+            break;
+          }
         }
+        if (company) break;
       }
     }
 
-    // Source C: First company link on page
+    // Source B: Any company link near the top of the page
     if (!company) {
       const allCompanyLinks = document.querySelectorAll('a[href*="/company/"]');
       for (const link of allCompanyLinks) {
         const t = link.innerText.trim().split('\n')[0].trim();
-        if (t && t.length > 1 && t.length < 60 && !/university|college|school|institute|follow/i.test(t)) {
+        if (t && t.length > 1 && t.length < 60 && !/university|college|school|institute|follow|hiring/i.test(t)) {
           company = t;
           confidence = 'medium';
           break;
@@ -205,7 +212,7 @@ function injectedScraper() {
       }
     }
 
-    // Source D: Experience section with "Present"
+    // Source C: Experience section with "Present"
     if (!company) {
       const experienceSection = document.querySelector('#experience');
       if (experienceSection) {
@@ -224,7 +231,7 @@ function injectedScraper() {
       }
     }
 
-    // Source E: Headline parsing
+    // Source D: Headline parsing (last resort)
     if (!company && headline) {
       const patterns = [
         { re: /@\s*(.+)/i, idx: 1 },
