@@ -69,7 +69,7 @@ const Home = () => {
         <div className="dots">
           <span></span><span></span><span></span>
         </div>
-        <div className="console-title">AutoReach Engine v1.0.4</div>
+        <div className="console-title">AutoReach Engine v3.0.0</div>
       </div>
       <div className="console-content">
         <div className="console-grid">

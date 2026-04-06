@@ -6,6 +6,7 @@ function LinkedIn() {
   const [targetRole, setTargetRole] = useState('');
   const [guessedEmail, setGuessedEmail] = useState(null);
   const [manualEmail, setManualEmail] = useState('');
+  const [manualCompany, setManualCompany] = useState('');
   const [emailSource, setEmailSource] = useState('');
   const [addingToQueue, setAddingToQueue] = useState(false);
   const [message, setMessage] = useState('');
@@ -18,6 +19,7 @@ function LinkedIn() {
         setStep('idle');
         setGuessedEmail(null);
         setManualEmail('');
+        setManualCompany('');
         setTargetRole('');
         setMessage('');
       }
@@ -31,16 +33,25 @@ function LinkedIn() {
     setMessage('');
     setGuessedEmail(null);
     setManualEmail('');
+    setManualCompany('');
     setTargetRole('');
+
     try {
-      const result = await new Promise((resolve) => {
-        chrome.storage.local.get(['linkedinProfile'], resolve);
+      // Ask background to actively scrape the open LinkedIn tab right now
+      const scrapeResult = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ type: 'SCRAPE_LINKEDIN_NOW' }, resolve);
       });
 
-      const profileData = result?.linkedinProfile;
+      if (!scrapeResult?.success) {
+        setMessage(scrapeResult?.error || 'Please open a LinkedIn profile page (linkedin.com/in/...) and try again.');
+        setStep('idle');
+        return;
+      }
+
+      const profileData = scrapeResult.data;
 
       if (!profileData?.name) {
-        setMessage('Please open a LinkedIn profile page and wait 2 seconds, then try again.');
+        setMessage('Profile page loaded but name could not be detected. Scroll down a bit and try again.');
         setStep('idle');
         return;
       }
@@ -53,7 +64,7 @@ function LinkedIn() {
           setEmailSource(response.data.emailSource);
         }
       } catch (e) {
-        // Email guess failed silently — user will enter manually
+        // Email guess failed silently
       }
 
       setProfile(profileData);
@@ -65,7 +76,9 @@ function LinkedIn() {
   };
 
   const handleAddToQueue = async () => {
-    const finalEmail = guessedEmail || manualEmail.trim();
+    const finalEmail = manualEmail.trim() || guessedEmail;
+    const finalCompany = manualCompany.trim() || profile.company || 'Unknown';
+
     if (!finalEmail) {
       setMessage('Please enter the recruiter email.');
       return;
@@ -78,7 +91,7 @@ function LinkedIn() {
     try {
       await api.post('/hr/add', {
         hr_name: profile.name,
-        company: profile.company || 'Unknown',
+        company: finalCompany,
         email: finalEmail,
         role: targetRole.trim(),
         source: 'linkedin',
@@ -88,6 +101,7 @@ function LinkedIn() {
       setProfile(null);
       setGuessedEmail(null);
       setManualEmail('');
+      setManualCompany('');
       setTargetRole('');
     } catch (err) {
       setMessage('Failed to add: ' + (err.response?.data?.error || err.message));
@@ -125,7 +139,10 @@ function LinkedIn() {
           <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
             <p className="text-sm font-semibold text-slate-800">{profile.name}</p>
             {profile.headline && <p className="text-xs text-slate-600">{profile.headline}</p>}
-            {profile.company && <p className="text-xs text-slate-500">🏢 {profile.company}</p>}
+            {profile.company
+              ? <p className="text-xs text-green-600">🏢 {profile.company} ✅</p>
+              : <p className="text-xs text-amber-600">🏢 Company not detected — enter below</p>
+            }
             {profile.location && <p className="text-xs text-slate-500">📍 {profile.location}</p>}
             {guessedEmail && (
               <p className="text-xs text-green-600 font-mono mt-1">📧 {guessedEmail}</p>
@@ -135,7 +152,7 @@ function LinkedIn() {
         )}
       </div>
 
-      {/* Step 2 — Email + Role */}
+      {/* Step 2 — Details */}
       {profile && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
           <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
@@ -143,7 +160,24 @@ function LinkedIn() {
             Enter Details
           </h3>
 
-          {/* Email field — show if not guessed */}
+          {/* Company field — only show if not detected */}
+          {!profile.company && (
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
+                Company Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={manualCompany}
+                onChange={(e) => setManualCompany(e.target.value)}
+                placeholder="e.g. Tata Consultancy Services"
+                className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-amber-50"
+              />
+              <p className="text-xs text-amber-600 mt-1">⚠️ Not detected from experience — enter manually</p>
+            </div>
+          )}
+
+          {/* Email field */}
           {!guessedEmail && (
             <div className="mb-3">
               <label className="block text-xs font-medium text-slate-700 mb-1">
@@ -156,11 +190,10 @@ function LinkedIn() {
                 placeholder="recruiter@company.com"
                 className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
               />
-              <p className="text-xs text-amber-600 mt-1">⚠️ Could not auto-guess email — enter manually</p>
+              <p className="text-xs text-amber-600 mt-1">⚠️ Could not auto-guess — enter manually</p>
             </div>
           )}
 
-          {/* Show guessed email with option to override */}
           {guessedEmail && (
             <div className="mb-3">
               <label className="block text-xs font-medium text-slate-700 mb-1">Recruiter Email</label>
@@ -200,7 +233,7 @@ function LinkedIn() {
           </h3>
           <button
             onClick={handleAddToQueue}
-            disabled={addingToQueue || (!guessedEmail && !manualEmail.trim()) || !targetRole.trim()}
+            disabled={addingToQueue || (!guessedEmail && !manualEmail.trim()) || !targetRole.trim() || (!profile.company && !manualCompany.trim())}
             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
             {addingToQueue ? (
