@@ -35,9 +35,9 @@ function LinkedIn() {
     setManualEmail('');
     setManualCompany('');
     setTargetRole('');
+    setProfile(null);
 
     try {
-      // Ask background to actively scrape the open LinkedIn tab right now
       const scrapeResult = await new Promise((resolve) => {
         chrome.runtime.sendMessage({ type: 'SCRAPE_LINKEDIN_NOW' }, resolve);
       });
@@ -51,20 +51,32 @@ function LinkedIn() {
       const profileData = scrapeResult.data;
 
       if (!profileData?.name) {
-        setMessage('Profile page loaded but name could not be detected. Scroll down a bit and try again.');
+        setMessage('Profile page loaded but name could not be detected. Scroll to the top of the profile and try again.');
         setStep('idle');
         return;
       }
 
-      // Auto guess email
-      try {
-        const response = await api.post('/linkedin/guess-email', { profile: profileData });
-        if (response.data.success && response.data.email) {
-          setGuessedEmail(response.data.email);
-          setEmailSource(response.data.emailSource);
+      // The background script already generates email and domain.
+      // Use those as primary, then try backend API for better guess.
+      let bestEmail = profileData.email || '';
+      let bestSource = bestEmail ? `pattern (${profileData.confidence || 'low'} confidence)` : '';
+
+      // Try backend API for Hunter.io or better pattern
+      if (profileData.company || profileData.headline) {
+        try {
+          const response = await api.post('/linkedin/guess-email', { profile: profileData });
+          if (response.data.success && response.data.email) {
+            bestEmail = response.data.email;
+            bestSource = response.data.emailSource;
+          }
+        } catch (e) {
+          console.log('[AutoReach] Backend email guess failed, using client-side:', e.message);
         }
-      } catch (e) {
-        // Email guess failed silently
+      }
+
+      if (bestEmail) {
+        setGuessedEmail(bestEmail);
+        setEmailSource(bestSource);
       }
 
       setProfile(profileData);
@@ -110,6 +122,9 @@ function LinkedIn() {
     }
   };
 
+  const companyDetected = !!(profile?.company);
+  const emailDetected = !!guessedEmail;
+
   return (
     <div className="p-4 h-screen overflow-y-auto bg-slate-50">
       <h2 className="text-xl font-bold text-slate-900 mb-1">LinkedIn Outreach</h2>
@@ -129,9 +144,17 @@ function LinkedIn() {
           className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           {step === 'scraping' ? (
-            <><div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />Scraping...</>
+            <>
+              <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
+              Scraping...
+            </>
           ) : (
-            <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>Scrape Active LinkedIn Tab</>
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Scrape Active LinkedIn Tab
+            </>
           )}
         </button>
 
@@ -139,13 +162,16 @@ function LinkedIn() {
           <div className="mt-3 p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
             <p className="text-sm font-semibold text-slate-800">{profile.name}</p>
             {profile.headline && <p className="text-xs text-slate-600">{profile.headline}</p>}
-            {profile.company
+            {companyDetected
               ? <p className="text-xs text-green-600">🏢 {profile.company} ✅</p>
               : <p className="text-xs text-amber-600">🏢 Company not detected — enter below</p>
             }
             {profile.location && <p className="text-xs text-slate-500">📍 {profile.location}</p>}
-            {guessedEmail && (
+            {emailDetected && (
               <p className="text-xs text-green-600 font-mono mt-1">📧 {guessedEmail}</p>
+            )}
+            {profile.confidence && (
+              <p className="text-xs text-slate-400 mt-0.5">Confidence: {profile.confidence}</p>
             )}
             <p className="text-xs text-green-600 font-medium mt-1">✅ Profile scraped</p>
           </div>
@@ -160,52 +186,63 @@ function LinkedIn() {
             Enter Details
           </h3>
 
-          {/* Company field — only show if not detected */}
-          {!profile.company && (
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Company Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={manualCompany}
-                onChange={(e) => setManualCompany(e.target.value)}
-                placeholder="e.g. Tata Consultancy Services"
-                className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-amber-50"
-              />
-              <p className="text-xs text-amber-600 mt-1">⚠️ Not detected from experience — enter manually</p>
-            </div>
-          )}
+          {/* Company field */}
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Company Name <span className="text-red-500">*</span>
+            </label>
+            {companyDetected ? (
+              <>
+                <input
+                  type="text"
+                  value={manualCompany || profile.company}
+                  onChange={(e) => setManualCompany(e.target.value)}
+                  className="w-full px-3 py-2 border border-green-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-green-50"
+                />
+                <p className="text-xs text-green-600 mt-1">✅ Auto-detected — edit if incorrect</p>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={manualCompany}
+                  onChange={(e) => setManualCompany(e.target.value)}
+                  placeholder="e.g. Tata Consultancy Services"
+                  className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-amber-50"
+                />
+                <p className="text-xs text-amber-600 mt-1">⚠️ Not detected from experience — enter manually</p>
+              </>
+            )}
+          </div>
 
           {/* Email field */}
-          {!guessedEmail && (
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">
-                Recruiter Email <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="email"
-                value={manualEmail}
-                onChange={(e) => setManualEmail(e.target.value)}
-                placeholder="recruiter@company.com"
-                className="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-xs text-amber-600 mt-1">⚠️ Could not auto-guess — enter manually</p>
-            </div>
-          )}
-
-          {guessedEmail && (
-            <div className="mb-3">
-              <label className="block text-xs font-medium text-slate-700 mb-1">Recruiter Email</label>
-              <input
-                type="email"
-                value={manualEmail || guessedEmail}
-                onChange={(e) => setManualEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-green-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-green-50"
-              />
-              <p className="text-xs text-green-600 mt-1">✅ Auto-guessed — edit if incorrect</p>
-            </div>
-          )}
+          <div className="mb-3">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Recruiter Email <span className="text-red-500">*</span>
+            </label>
+            {emailDetected ? (
+              <>
+                <input
+                  type="email"
+                  value={manualEmail || guessedEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  className="w-full px-3 py-2 border border-green-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-green-50"
+                />
+                <p className="text-xs text-green-600 mt-1">✅ Auto-guessed ({emailSource}) — edit if incorrect</p>
+              </>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  value={manualEmail}
+                  onChange={(e) => setManualEmail(e.target.value)}
+                  placeholder="recruiter@company.com"
+                  className="w-full px-3 py-2 border border-amber-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 bg-amber-50"
+                />
+                <p className="text-xs text-amber-600 mt-1">⚠️ Could not auto-guess — enter manually</p>
+              </>
+            )}
+          </div>
 
           {/* Role field */}
           <div>
@@ -233,13 +270,26 @@ function LinkedIn() {
           </h3>
           <button
             onClick={handleAddToQueue}
-            disabled={addingToQueue || (!guessedEmail && !manualEmail.trim()) || !targetRole.trim() || (!profile.company && !manualCompany.trim())}
+            disabled={
+              addingToQueue ||
+              (!guessedEmail && !manualEmail.trim()) ||
+              !targetRole.trim() ||
+              (!profile.company && !manualCompany.trim())
+            }
             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors"
           >
             {addingToQueue ? (
-              <><div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />Adding...</>
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent" />
+                Adding...
+              </>
             ) : (
-              <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>Add to Queue & Send</>
+              <>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add to Queue & Send
+              </>
             )}
           </button>
         </div>

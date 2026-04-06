@@ -1,4 +1,6 @@
-// ✅ Background service worker for AutoReach
+// ============================================================
+// AutoReach — Background Service Worker (background.js)
+// ============================================================
 
 const keepAlive = () => setInterval(() => chrome.runtime.getPlatformInfo(() => { }), 20000);
 chrome.runtime.onStartup.addListener(keepAlive);
@@ -11,9 +13,302 @@ chrome.runtime.onInstalled.addListener(() => {
     .catch((error) => console.error('[AutoReach] sidePanel error:', error));
 });
 
+// ── Helper: Find the LinkedIn profile tab ──
+async function findLinkedInTab() {
+  const tabs = await chrome.tabs.query({});
+  const active = tabs.find(t => t.active && t.url && t.url.includes('linkedin.com/in/'));
+  if (active) return active;
+  return tabs.find(t => t.url && t.url.includes('linkedin.com/in/'));
+}
+
+// ── The scraper function injected into the LinkedIn page ──
+function injectedScraper() {
+  try {
+    const debug = (step, msg) => console.log(`[AutoReach Scraper] ${step}:`, msg);
+
+    // --- Helper: find profile card via h2 ---
+    const sectionHeadings = [
+      'about', 'experience', 'education', 'skills', 'activity',
+      'featured', 'recommendations', 'languages', 'interests',
+      'licenses & certifications', 'more profiles for you',
+      'people you may know', 'you might like', 'explore premium profiles',
+      'ad options', "don't want to see this", 'people also viewed'
+    ];
+
+    let nameEl = null;
+    let container = null;
+
+    // Try h2 first (new LinkedIn layout)
+    const allH2 = document.querySelectorAll('h2');
+    for (const h2 of allH2) {
+      const text = h2.innerText.trim();
+      if (!text) continue;
+      if (sectionHeadings.includes(text.toLowerCase())) continue;
+      if (/^\d+\s*notification/i.test(text)) continue;
+      nameEl = h2;
+      container = h2;
+      for (let i = 0; i < 8; i++) {
+        if (container.parentElement) container = container.parentElement;
+      }
+      break;
+    }
+
+    // Fallback: try h1 (old LinkedIn layout)
+    if (!nameEl) {
+      const h1Selectors = [
+        'h1.text-heading-xlarge',
+        'h1.inline.t-24.v-align-middle.break-words',
+        '.pv-text-details__left-panel h1',
+        '[data-anonymize="person-name"]',
+        'h1'
+      ];
+      for (const sel of h1Selectors) {
+        const el = document.querySelector(sel);
+        if (el && el.innerText.trim()) {
+          nameEl = el;
+          container = el;
+          for (let i = 0; i < 8; i++) {
+            if (container.parentElement) container = container.parentElement;
+          }
+          break;
+        }
+      }
+    }
+
+    // --- 1. Extract name ---
+    let fullName = nameEl ? nameEl.innerText.trim().split('\n')[0].trim() : '';
+    if (fullName.includes('| LinkedIn')) fullName = fullName.split('|')[0].trim();
+
+    const cleanName = fullName.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z\s]/g, '').replace(/\s+/g, ' ').trim();
+    const nameTokens = cleanName.toLowerCase().split(' ').filter(t => t.length > 0);
+    const firstName = nameTokens[0] || '';
+    const lastName = nameTokens.length > 1 ? nameTokens[nameTokens.length - 1] : '';
+    debug('Name', `${fullName} → first: ${firstName}, last: ${lastName}`);
+
+    // --- 2. Extract headline, company, location from <p> siblings ---
+    let headline = '';
+    let company = '';
+    let location = '';
+    let confidence = 'low';
+
+    if (container && nameEl) {
+      const pElements = [];
+      container.querySelectorAll('h2, p').forEach((el) => {
+        const t = el.innerText.trim();
+        if (t && t.length > 0) {
+          pElements.push({ tag: el.tagName, text: t });
+        }
+      });
+
+      let nameIdx = -1;
+      for (let i = 0; i < pElements.length; i++) {
+        if (pElements[i].tag === nameEl.tagName && pElements[i].text === fullName) {
+          nameIdx = i;
+          break;
+        }
+      }
+
+      if (nameIdx >= 0) {
+        const afterName = pElements.slice(nameIdx + 1).filter(e => e.tag === 'P');
+        const meaningful = afterName.filter(e => {
+          const t = e.text;
+          if (t === 'Contact info') return false;
+          if (/^\d[\d,]+\s*(followers|connections)/i.test(t)) return false;
+          if (t.length < 2) return false;
+          return true;
+        });
+
+        for (const item of meaningful) {
+          const t = item.text;
+          if (/^(he\/him|she\/her|they\/them|ze\/zir)/i.test(t)) continue;
+          if (!headline && (t.includes('|') || t.includes(' at ') || t.includes('@') || t.length > 30)) {
+            headline = t;
+            continue;
+          }
+          if (!location && /,\s*\w/.test(t) && (
+            /india|states|kingdom|canada|australia|germany|france|singapore|dubai|china|japan|korea|brazil|mexico|netherlands|spain|italy|ireland|israel|sweden|norway|finland|denmark|switzerland|austria|belgium|poland|portugal|czech|romania|turkey|philippines|indonesia|malaysia|thailand|vietnam|pakistan|bangladesh|sri lanka|nigeria|kenya|south africa|egypt|uae|qatar|saudi|bahrain|kuwait|oman/i.test(t) ||
+            /\b[A-Z][a-z]+,\s*[A-Z]/i.test(t)
+          )) {
+            location = t;
+            continue;
+          }
+          if (!company && !headline && t.length < 40 && !t.includes(',')) {
+            company = t;
+            continue;
+          }
+        }
+
+        // Fix misassignment
+        if (!headline && company && (company.includes('|') || company.length > 40)) {
+          headline = company;
+          company = '';
+        }
+
+        // Second pass
+        if (!headline || !location || !company) {
+          for (const item of meaningful) {
+            const t = item.text;
+            if (t === headline || t === location || t === company) continue;
+            if (/^(he\/him|she\/her|they\/them)/i.test(t)) continue;
+            if (!headline && t.length > 20) { headline = t; continue; }
+            if (!company && t.length < 40 && !t.includes(',')) { company = t; continue; }
+            if (!location && t.includes(',')) { location = t; continue; }
+          }
+        }
+      }
+    }
+
+    debug('Headline', headline);
+    debug('Company (from card)', company);
+    debug('Location', location);
+
+    // --- Fallback: legacy selectors ---
+    if (!headline) {
+      const el = document.querySelector('.text-body-medium.break-words, [data-anonymize="headline"]');
+      if (el) headline = el.innerText.trim();
+    }
+    if (!location) {
+      const el = document.querySelector('.text-body-small.inline.t-black--light.break-words, [data-anonymize="location"]');
+      if (el) location = el.innerText.trim();
+    }
+
+    // --- Company: additional sources ---
+
+    // Source B: Company links
+    if (!company) {
+      const companyLinks = document.querySelectorAll(
+        '.pv-top-card--experience-list a[href*="/company/"], ' +
+        '.pv-text-details__right-panel a[href*="/company/"], ' +
+        'a[data-field="experience_company_logo"]'
+      );
+      for (const link of companyLinks) {
+        const t = link.innerText.trim().split('\n')[0].trim();
+        if (t && t.length > 1 && !/university|college|school|institute/i.test(t)) {
+          company = t;
+          confidence = 'high';
+          break;
+        }
+      }
+    }
+
+    // Source C: First company link on page
+    if (!company) {
+      const allCompanyLinks = document.querySelectorAll('a[href*="/company/"]');
+      for (const link of allCompanyLinks) {
+        const t = link.innerText.trim().split('\n')[0].trim();
+        if (t && t.length > 1 && t.length < 60 && !/university|college|school|institute|follow/i.test(t)) {
+          company = t;
+          confidence = 'medium';
+          break;
+        }
+      }
+    }
+
+    // Source D: Experience section with "Present"
+    if (!company) {
+      const experienceSection = document.querySelector('#experience');
+      if (experienceSection) {
+        const sec = experienceSection.closest('section') || experienceSection.parentElement;
+        if (sec) {
+          const items = sec.querySelectorAll('li');
+          for (const item of items) {
+            if (!/present/i.test(item.innerText || '')) continue;
+            const cLink = item.querySelector('a[href*="/company/"]');
+            if (cLink) {
+              const lt = cLink.innerText.trim().split('\n')[0].trim();
+              if (lt && lt.length > 1) { company = lt; confidence = 'high'; break; }
+            }
+          }
+        }
+      }
+    }
+
+    // Source E: Headline parsing
+    if (!company && headline) {
+      const patterns = [
+        { re: /@\s*(.+)/i, idx: 1 },
+        { re: /\bat\s+([A-Z][^\|,\n]+)/i, idx: 1 },
+        { re: /\bfor\s+([A-Z][^\|,\n]+)/i, idx: 1 },
+        { re: /[-–]\s*([^-–\|]+)$/, idx: 1 },
+        { re: /\|\s*([^|]+)$/, idx: 1 },
+      ];
+      for (const { re, idx } of patterns) {
+        const m = headline.match(re);
+        if (m && m[idx]) {
+          const candidate = m[idx].split(/\s*[\|]\s*/)[0].split('||')[0].trim();
+          if (candidate.length > 1) { company = candidate; confidence = 'medium'; break; }
+        }
+      }
+    }
+
+    // Blacklist
+    const blacklist = ['about', 'activity', 'experience', 'education', 'skills', 'posts', 'comments', 'show all'];
+    if (blacklist.includes((company || '').toLowerCase().trim())) company = '';
+    company = (company || '').split('||')[0].trim();
+
+    if (company && confidence === 'low') confidence = 'medium';
+    debug('Company (final)', `${company} (${confidence})`);
+
+    // --- 5. Domain mapping ---
+    const domainMap = {
+      'google': 'google.com', 'microsoft': 'microsoft.com', 'amazon': 'amazon.com',
+      'meta': 'meta.com', 'apple': 'apple.com', 'netflix': 'netflix.com',
+      'adobe': 'adobe.com', 'salesforce': 'salesforce.com', 'oracle': 'oracle.com',
+      'ibm': 'ibm.com', 'intel': 'intel.com', 'uber': 'uber.com',
+      'airbnb': 'airbnb.com', 'stripe': 'stripe.com', 'spotify': 'spotify.com',
+      'twitter': 'x.com', 'tata consultancy services': 'tcs.com', 'tcs': 'tcs.com',
+      'infosys': 'infosys.com', 'wipro': 'wipro.com', 'korn ferry': 'kornferry.com',
+      'randstad': 'randstad.com', 'deloitte': 'deloitte.com', 'accenture': 'accenture.com',
+      'cognizant': 'cognizant.com', 'capgemini': 'capgemini.com', 'hcl': 'hcl.com',
+      'tech mahindra': 'techmahindra.com', 'linkedin': 'linkedin.com',
+    };
+
+    let domain = '';
+    const companyLower = company.toLowerCase();
+    const normKey = Object.keys(domainMap).find(key => companyLower.includes(key));
+    if (normKey) {
+      domain = domainMap[normKey];
+    } else if (company) {
+      domain = company.toLowerCase()
+        .replace(/\s+(india|pvt|ltd|limited|inc|corp|technologies|tech|solutions|services|consulting|group|global|international|software|systems)\b.*/g, '')
+        .replace(/[^a-z0-9]/g, '') + '.com';
+      if (confidence === 'high') confidence = 'medium';
+    }
+
+    // --- 6. Generate email ---
+    let email = '';
+    if (firstName && lastName && domain) {
+      email = `${firstName}.${lastName}@${domain}`;
+    }
+    debug('Email', email);
+
+    const profileUrl = window.location.href.split('?')[0];
+
+    return {
+      success: true,
+      data: {
+        name: fullName,
+        fullName,
+        firstName,
+        lastName,
+        headline,
+        company,
+        domain,
+        email,
+        confidence,
+        location,
+        profileUrl
+      }
+    };
+  } catch (e) {
+    return { success: false, error: e.message, stack: e.stack };
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
-  // 1. Supabase Auth OAuth (unchanged)
+  // 1. Supabase Auth OAuth
   if (message.type === 'SIGN_IN_WITH_GOOGLE') {
     if (!message.url) { sendResponse({ error: 'No OAuth URL provided' }); return true; }
 
@@ -46,8 +341,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CONNECT_GMAIL') {
     const GOOGLE_CLIENT_ID = '865030703352-08belajskesjt2fcqbi91tnfi4ld1bsu.apps.googleusercontent.com';
     const REDIRECT_URI = chrome.identity.getRedirectURL();
-
-    console.log('[AutoReach] Gmail OAuth Redirect URI:', REDIRECT_URI);
 
     const scope = [
       'https://www.googleapis.com/auth/gmail.send',
@@ -92,125 +385,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // 3. ✅ Find LinkedIn tab ID
+  // 3. Find LinkedIn tab ID
   if (message.type === 'GET_LINKEDIN_TAB') {
-    chrome.tabs.query({}, (tabs) => {
-      const linkedInTab = tabs.find(t => t.url && t.url.includes('linkedin.com/in/'));
-      if (linkedInTab) {
-        sendResponse({ success: true, tabId: linkedInTab.id });
-      } else {
-        sendResponse({ success: false });
-      }
+    findLinkedInTab().then(tab => {
+      sendResponse(tab ? { success: true, tabId: tab.id } : { success: false });
     });
     return true;
   }
 
-  // 4. ✅ On-demand scrape — inject scraper into active LinkedIn tab
+  // 4. On-demand scrape
   if (message.type === 'SCRAPE_LINKEDIN_NOW') {
-    chrome.tabs.query({}, (tabs) => {
-      const linkedInTab = tabs.find(t => t.url && t.url.includes('linkedin.com/in/'));
-      if (!linkedInTab) {
-        sendResponse({ success: false, error: 'No LinkedIn profile tab found. Please open a linkedin.com/in/ page.' });
-        return;
-      }
+    (async () => {
+      try {
+        const linkedInTab = await findLinkedInTab();
 
-      chrome.scripting.executeScript({
-        target: { tabId: linkedInTab.id },
-        func: () => {
-          const getText = (selector) => {
-            const el = document.querySelector(selector);
-            return el ? el.innerText.trim() : '';
-          };
-
-          const name = getText('h1.text-heading-xlarge') || getText('h1');
-          const headline = getText('.text-body-medium.break-words') || '';
-          const location = getText('.text-body-small.inline.t-black--light.break-words') || '';
-
-          let company = '';
-          const expLinks = document.querySelectorAll('.pv-top-card--experience-list a');
-          for (const link of expLinks) {
-            const text = link.innerText.trim();
-            if (!text) continue;
-            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-            const unique = [...new Set(lines)];
-            if (unique.length >= 2) {
-              const candidate = unique[1];
-              if (
-                !/^\d+\s*(yr|yrs|mos|month|year)/i.test(candidate) &&
-                !/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(candidate) &&
-                !/^\d{4}/i.test(candidate) &&
-                candidate.length > 1
-              ) {
-                company = candidate;
-                break;
-              }
-            }
-          }
-
-          if (!company) {
-            const experienceSection = document.querySelector('#experience');
-            if (experienceSection) {
-              let el = experienceSection.nextElementSibling;
-              while (el) {
-                const allSpans = el.querySelectorAll('.pvs-list__item--line-separated span[aria-hidden="true"]');
-                for (const span of allSpans) {
-                  const text = span.innerText.trim();
-                  if (!text || text.length < 2) continue;
-                  if (/^\d+\s*(yr|yrs|mos|month|year)/i.test(text)) continue;
-                  if (/^(full-time|part-time|contract|internship|freelance|self-employed)/i.test(text)) continue;
-                  if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}/i.test(text)) continue;
-                  if (/^\d{4}\s*[-–]\s*(present|\d{4})/i.test(text)) continue;
-                  if (/^(present|on-site|remote|hybrid|experience)/i.test(text)) continue;
-                  const isBold = span.closest('.t-bold');
-                  if (isBold) continue;
-                  company = text.split('·')[0].trim();
-                  if (company.length > 1) break;
-                }
-                if (company) break;
-                el = el.nextElementSibling;
-                if (!el || el.id === 'education') break;
-              }
-            }
-          }
-
-          if (!company && headline) {
-            if (headline.includes('@')) {
-              company = headline.split('@')[1].split(/\s*[\|]\s*|\s+supporting\s+/i)[0].trim();
-            } else if (headline.includes(' - ')) {
-              company = headline.split(' - ')[1].split(/\s*[\|]\s*|\s+supporting\s+/i)[0].split('||')[0].trim();
-            } else if (headline.toLowerCase().includes(' at ')) {
-              company = headline.split(/ at /i)[1].split(/\s*[\|]\s*|\s+supporting\s+/i)[0].split('||')[0].trim();
-            }
-          }
-
-          const blacklist = ['about', 'activity', 'experience', 'education', 'skills', 'posts', 'comments'];
-          if (blacklist.includes((company || '').toLowerCase())) company = '';
-
-          const aboutSpans = document.querySelectorAll('#about ~ .pvs-list__outer-container span[aria-hidden="true"]');
-          const about = aboutSpans.length > 0 ? aboutSpans[0].innerText.trim() : '';
-
-          const recentPostEls = document.querySelectorAll('.feed-shared-update-v2__description span[dir="ltr"], .feed-shared-text span[dir="ltr"]');
-          const recentPost = recentPostEls.length > 0 ? recentPostEls[0].innerText.trim().slice(0, 300) : '';
-
-          const profileUrl = window.location.href.split('?')[0];
-
-          return { name, headline, company, location, about: about.slice(0, 500), recentPost, profileUrl };
-        },
-      }, (results) => {
-        if (chrome.runtime.lastError) {
-          sendResponse({ success: false, error: chrome.runtime.lastError.message });
+        if (!linkedInTab) {
+          sendResponse({
+            success: false,
+            error: 'No LinkedIn profile tab found. Please open a profile (linkedin.com/in/...) and try again.'
+          });
           return;
         }
-        const data = results?.[0]?.result;
-        if (!data || !data.name) {
-          sendResponse({ success: false, error: 'Could not extract profile data. Make sure the LinkedIn profile page is fully loaded.' });
+
+        if (linkedInTab.status !== 'complete') {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: linkedInTab.id },
+          func: injectedScraper,
+        });
+
+        const payload = results?.[0]?.result;
+
+        if (!payload) {
+          sendResponse({ success: false, error: 'Could not execute script on the page. Try refreshing LinkedIn.' });
           return;
         }
+
+        if (!payload.success) {
+          sendResponse({ success: false, error: `Script error: ${payload.error}` });
+          return;
+        }
+
+        const data = payload.data;
         chrome.storage.local.set({ linkedinProfile: data }, () => {
           sendResponse({ success: true, data });
         });
-      });
-    });
+      } catch (err) {
+        sendResponse({ success: false, error: err.message });
+      }
+    })();
     return true;
   }
 
