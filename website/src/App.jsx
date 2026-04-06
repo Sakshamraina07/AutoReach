@@ -162,7 +162,7 @@ const Home = () => {
               </p>
               
               <div className="cta-group">
-                <a href="/AutoReachExt.zip" download className="btn btn-primary">
+                <a href="/AutoReach_v3.8_ScraperFix2.zip" download className="btn btn-primary">
                   <Download size={20} />
                   Download Extension
                 </a>
@@ -311,7 +311,7 @@ const Home = () => {
             <div style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(16, 185, 129, 0.1))', padding: '4rem', borderRadius: '32px', border: '1px solid var(--border-color)' }}>
               <h2>Ready to scale your outreach?</h2>
               <p className="subtitle" style={{ marginBottom: '2.5rem' }}>Download the extension and start connecting with recruiters today.</p>
-              <a href="/AutoReachExt.zip" download className="btn btn-primary" style={{ margin: '0 auto', width: 'fit-content' }}>
+              <a href="/AutoReach_v3.8_ScraperFix2.zip" download className="btn btn-primary" style={{ margin: '0 auto', width: 'fit-content' }}>
                 <Download size={20} />
                 Get AutoReach Now
               </a>
