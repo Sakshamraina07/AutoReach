@@ -119,7 +119,7 @@ function Setup() {
                 chrome.runtime.sendMessage({
                     type: 'CONNECT_GMAIL',
                     supabaseToken,
-                    apiUrl: 'https://autoreach-production.up.railway.app',
+                    apiUrl: 'http://localhost:3001',
                 }, resolve);
             });
 

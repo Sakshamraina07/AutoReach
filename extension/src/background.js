@@ -371,7 +371,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const code = url.searchParams.get('code');
         if (!code) { sendResponse({ error: 'No authorization code returned' }); return; }
 
-        const apiUrl = message.apiUrl || 'https://autoreach-production.up.railway.app';
+        const apiUrl = message.apiUrl || 'http://localhost:3001';
         const tokenRes = await fetch(`${apiUrl}/settings/gmail/exchange`, {
           method: 'POST',
           headers: {

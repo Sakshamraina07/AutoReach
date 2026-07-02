@@ -24,7 +24,9 @@ const manifest = {
     service_worker: "src/background.js",
     type: "module"
   },
-  side_panel: { default_path: "index.html" },
+  side_panel: {
+    default_path: "index.html"
+  },
   content_scripts: [
     {
       matches: ["https://www.linkedin.com/in/*"],
@@ -41,24 +43,32 @@ const manifest = {
     "tabs"
   ],
   host_permissions: [
-    "https://autoreach-pjez.onrender.com/*",
+    "https://autoreach-production-3c97.up.railway.app/*",
     "https://*.supabase.co/*",
     "https://accounts.google.com/*",
     "https://www.googleapis.com/*",
-    "https://autoreach-production.up.railway.app/*",
     "https://www.linkedin.com/*"
   ],
   oauth2: {
     client_id: "865030703352-ie39225agct02nuf2nm8qehorq3sj28n.apps.googleusercontent.com",
-    scopes: ["openid", "email", "profile"]
+    scopes: [
+      "openid",
+      "email",
+      "profile"
+    ]
   },
   web_accessible_resources: [
     {
-      resources: ["index.html", "assets/*"],
-      matches: ["<all_urls>"]
+      resources: [
+        "index.html",
+        "assets/*"
+      ],
+      matches: [
+        "<all_urls>"
+      ]
     }
   ]
-};
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -66,18 +76,18 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      crx({ manifest }),
+      crx({ manifest })
     ],
     define: {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY)
     },
     server: {
       port: 5173,
       strictPort: true,
       hmr: {
-        port: 5173,
-      },
-    },
+        port: 5173
+      }
+    }
   }
 })

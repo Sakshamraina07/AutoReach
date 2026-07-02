@@ -43,11 +43,10 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://autoreach-pjez.onrender.com/*",
+    "https://autoreach-production-3c97.up.railway.app/*",
     "https://*.supabase.co/*",
     "https://accounts.google.com/*",
     "https://www.googleapis.com/*",
-    "https://autoreach-production.up.railway.app/*",
     "https://www.linkedin.com/*"
   ],
   "oauth2": {
