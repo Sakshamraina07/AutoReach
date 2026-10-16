@@ -21,7 +21,7 @@
     "test": "npm run build:shared && npm run test --workspaces --if-present",
     "dev:api": "npm run dev -w @autoreach/backend",
     "dev:dashboard": "npm run dev -w @autoreach/dashboard",
-    "dev:extension": "npm run build:watch -w @autoreach/extension",
+    "dev:extension": "npm run build:dev -w @autoreach/extension",
     "db:migrate": "npm run db:migrate -w @autoreach/backend",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },

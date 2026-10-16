@@ -21,3 +21,4 @@ coverage/
 backend/.data/
 .tmp/
 extension/release/
+extension/.build-info.json

@@ -44,6 +44,8 @@ export function createApp(deps: Deps): Express {
         autoLogging: { ignore: (req) => /^\/(t|track)\/|^\/healthz/.test(req.url ?? '') },
         serializers: {
           req: (req: { method: string; url: string; id: string }) => ({ method: req.method, url: req.url.replace(/\/t\/[^/?]+/, '/t/[token]').replace(/\/track\/[^/?]+/, '/track/[id]').replace(/([?&](code|state)=)[^&]+/g, '$1[redacted]'), id: req.id }),
+          // Status only: response headers add noise and nothing useful for debugging.
+          res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
         },
       }),
     );

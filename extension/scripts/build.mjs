@@ -22,8 +22,11 @@ const outDir = path.join(root, 'dist');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 
 if (!env.VITE_API_URL) {
-  console.error('VITE_API_URL is not set. Copy extension/.env.example to extension/.env.local (or .env.production) and fill it in.');
-  process.exit(1);
+  // Lets `npm run build` / `npm run check` work in a fresh clone. Release
+  // packaging refuses localhost builds (scripts/package.mjs).
+  console.warn('VITE_API_URL is not set; building for a local API at http://localhost:3001. See extension/.env.example.');
+  env.VITE_API_URL = 'http://localhost:3001';
+  process.env.VITE_API_URL = env.VITE_API_URL;
 }
 const manifest = buildManifest({ version: pkg.version, apiUrl: env.VITE_API_URL, supabaseUrl: env.VITE_SUPABASE_URL || undefined });
 
@@ -68,7 +71,8 @@ for (const [entry, fileName, format] of [
   });
 }
 
-// 4. Manifest
+// 4. Manifest, plus build facts for the packager (kept outside dist/).
 fs.writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+fs.writeFileSync(path.join(root, '.build-info.json'), `${JSON.stringify({ mode, apiUrl: env.VITE_API_URL, devLogin: env.VITE_DEV_LOGIN === 'true' }, null, 2)}\n`);
 console.log(`Built AutoReach extension ${pkg.version} (${mode}) → ${path.relative(process.cwd(), outDir) || '.'}`);
 console.log(`API: ${env.VITE_API_URL}${env.VITE_DEV_LOGIN === 'true' ? '  (development sign-in enabled)' : ''}`);

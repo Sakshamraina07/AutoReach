@@ -14,6 +14,17 @@ if (!fs.existsSync(path.join(dist, 'manifest.json'))) {
   console.error('dist/manifest.json not found. Run the build first.');
   process.exit(1);
 }
+const manifest = JSON.parse(fs.readFileSync(path.join(dist, 'manifest.json'), 'utf8'));
+if (!process.argv.includes('--allow-localhost') && manifest.host_permissions.some((h) => /\/\/(localhost|127\.0\.0\.1)[:/]/.test(h))) {
+  console.error('This build points at a local API. Set VITE_API_URL (and the Supabase settings) for production, rebuild, then package. Use --allow-localhost to package a local build anyway.');
+  process.exit(1);
+}
+const infoPath = path.join(root, '.build-info.json');
+const info = fs.existsSync(infoPath) ? JSON.parse(fs.readFileSync(infoPath, 'utf8')) : {};
+if (info.devLogin && !process.argv.includes('--allow-localhost')) {
+  console.error('This build has the local development sign-in enabled (VITE_DEV_LOGIN=true). Rebuild without it before packaging.');
+  process.exit(1);
+}
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
