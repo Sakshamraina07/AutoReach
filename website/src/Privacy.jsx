@@ -38,7 +38,7 @@ const Privacy = () => {
               <span className="badge">Legal &amp; Compliance</span>
               <h1>Privacy <span className="highlight">Policy.</span></h1>
               <p className="subtitle">
-                Last updated: March 18, 2026
+                Last updated: October 17, 2026
               </p>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '-1rem' }}>
                 App: AutoReach &nbsp;|&nbsp; Developer: Saksham Raina &nbsp;|&nbsp;{' '}
@@ -57,169 +57,125 @@ const Privacy = () => {
         <section className="legal-text">
           <div className="container narrow">
 
-            {/* Introduction */}
             <div className="policy-section">
               <h2>Introduction</h2>
               <p>
-                Welcome to AutoReach ("we," "our," or "us"). We are committed to protecting your privacy. This Privacy Policy explains how our Chrome Extension, AutoReach, collects, uses, and safeguards your information when you use our service.
+                This policy explains what AutoReach (the web dashboard, the Chrome extension and the AutoReach server they use) collects, why, where it is stored, and how you can export or delete it.
               </p>
               <p>
-                AutoReach is a productivity tool designed to help students automate personalized cold email outreach to recruiters. By using AutoReach, you agree to the collection and use of information in accordance with this policy.
+                AutoReach helps students and early-career engineers keep track of recruiters, write role-specific outreach emails, send them from their own Gmail account after reviewing them, and know when to follow up.
               </p>
             </div>
 
-            {/* What AutoReach Does */}
             <div className="policy-section">
-              <h2>1. What AutoReach Does</h2>
-              <p>
-                AutoReach is a Chrome Extension that helps students automate personalized cold email outreach to recruiters. Here is exactly how it works:
-              </p>
+              <h2>1. What AutoReach does</h2>
               <ul>
-                <li><strong>Sign in with Google:</strong> Users authenticate via Google OAuth (Supabase Auth), which provides their name and email address for account management.</li>
-                <li><strong>Connect Gmail:</strong> Users connect their own Gmail account via Google OAuth (<code>gmail.send</code> scope) so that emails are sent from their real Gmail address.</li>
-                <li><strong>Add Recruiter Contacts:</strong> Users manually add recruiter contacts or import them via a CSV file.</li>
-                <li><strong>Write Email Templates:</strong> Users write their own email templates and can include personalization variables (e.g., recruiter name, company name).</li>
-                <li><strong>Automated Sending:</strong> AutoReach sends emails on behalf of the user with configurable 30–90 second delays between messages to mimic natural sending behavior.</li>
+                <li><strong>Sign in with Google</strong> through Supabase Auth, which gives us your name and email address for your account.</li>
+                <li><strong>Profile and résumés:</strong> you enter your education, skills, projects and experience, and upload résumé PDFs. You can ask AutoReach to suggest profile fields from your résumé; nothing is saved until you confirm each field.</li>
+                <li><strong>Recruiters and opportunities:</strong> you add recruiter contacts and job opportunities by hand, from a CSV file, or from a page you choose to save with the extension.</li>
+                <li><strong>Drafting:</strong> AutoReach builds drafts from your own templates and profile, or, if the server has an AI provider configured, with AI (see section 5). You edit every draft.</li>
+                <li><strong>Sending:</strong> emails are sent from your Gmail account only when you press Send, or when you approved an email for the send queue, or (only if you turn it on) for automatic follow-ups that use your own template. You can pause all sending at any time.</li>
+                <li><strong>Replies and follow-ups:</strong> AutoReach checks the threads it started for replies, bounces and automatic replies, and reminds you when a follow-up is due.</li>
               </ul>
             </div>
 
-            {/* Why We Need gmail.send */}
             <div className="policy-section">
-              <h2>2. Why We Need the <code>gmail.send</code> Scope</h2>
+              <h2>2. Google permissions we request, and why</h2>
               <div className="highlight-box">
                 <p>
-                  <strong>We request only the <code>gmail.send</code> scope.</strong> We do NOT request any other Gmail scopes. We can never read, modify, delete, or access any existing emails or inbox data.
+                  <strong>We request <code>gmail.send</code> and <code>gmail.metadata</code>, plus your basic identity (<code>openid</code>, <code>email</code>).</strong> We do not request permission to read the content of your emails, and we cannot read, modify or delete your messages.
                 </p>
               </div>
               <ul>
-                <li><strong>Authentic Sending:</strong> We need <code>gmail.send</code> to send job application emails directly from the user's own Gmail account — not from a third-party domain.</li>
-                <li><strong>Better Deliverability:</strong> Emails appearing from the user's real Gmail address improve deliverability and authenticity of job applications.</li>
-                <li><strong>Explicit User Action:</strong> Emails are only sent when the user has explicitly configured and triggered them within the extension.</li>
-                <li><strong>No Inbox Access:</strong> We never read, scan, index, or access any existing emails or inbox data in any form.</li>
-                <li><strong>No Unrelated Usage:</strong> The <code>gmail.send</code> access is used solely to send outreach emails that the user has drafted and approved.</li>
+                <li><strong><code>gmail.send</code>:</strong> to send the outreach emails you approve from your own address, so they appear in your Sent folder.</li>
+                <li><strong><code>gmail.metadata</code>:</strong> to read message <em>headers</em> (sender, recipients, subject, date and labels), not bodies or attachments, so AutoReach can notice when a recruiter replies in a thread you started, and recognise bounces and out-of-office replies. AutoReach looks only at new messages in threads it is tracking; detecting replies that arrive in a brand-new thread is a separate setting that is off by default.</li>
+                <li><strong><code>openid</code>, <code>email</code>:</strong> to show which Gmail account is connected.</li>
               </ul>
             </div>
 
-            {/* Limited Use Compliance */}
             <div className="policy-section">
-              <h2>3. Gmail API — Limited Use Compliance</h2>
+              <h2>3. Gmail API: Limited Use</h2>
               <div className="highlight-box">
                 <p>
-                  <strong>Important:</strong> AutoReach's use and transfer of information received from Google APIs to any other app adheres to the{' '}
+                  AutoReach's use and transfer of information received from Google APIs adheres to the{' '}
                   <a href="https://developers.google.com/terms/api-services-user-data-policy#additional_requirements_for_specific_api_scopes" target="_blank" rel="noreferrer">
                     Google API Services User Data Policy
                   </a>
                   , including the Limited Use requirements.
                 </p>
               </div>
-              <p>AutoReach's use of Gmail API data is strictly limited as follows:</p>
               <ul>
-                <li><strong>Purpose:</strong> Gmail API access is used solely to send emails on behalf of the user. No other use.</li>
-                <li><strong>No Storage Beyond Necessity:</strong> We do not store email content beyond what is immediately necessary to send the email.</li>
-                <li><strong>No Third-Party Sharing:</strong> We do not share Gmail data with any third parties under any circumstances.</li>
-                <li><strong>No Advertising:</strong> We do not use Gmail data for advertising, profiling, or any marketing purposes.</li>
-                <li><strong>Secure Token Storage:</strong> OAuth access and refresh tokens are stored server-side in Supabase with encryption. They are never stored in Chrome extension storage or exposed to the client.</li>
-                <li><strong>User Revocation:</strong> Users can disconnect their Gmail OAuth at any time from the Settings page, which immediately invalidates and removes their stored tokens.</li>
+                <li>Gmail data is used only to send the emails you approve and to show reply status for your outreach.</li>
+                <li>We store only what those features need: Gmail message and thread IDs of emails AutoReach sent, and for messages in those threads the sender, subject, date and how we classified them (reply, automatic reply, bounce).</li>
+                <li>Gmail data is never sold, never used for advertising, never used to train AI models, and never sent to AI providers.</li>
+                <li>OAuth tokens are encrypted (AES-256-GCM) on the AutoReach server. They are never stored in the browser or the extension.</li>
+                <li>Disconnecting Gmail in Settings revokes AutoReach's access at Google and deletes the stored tokens. You can also revoke access at <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">myaccount.google.com/permissions</a>.</li>
               </ul>
             </div>
 
-            {/* Information We Collect */}
             <div className="policy-section">
-              <h2>4. Information We Collect</h2>
-              <h3>Account Information</h3>
+              <h2>4. Information we store</h2>
+              <h3>Account and profile</h3>
+              <p>Your name, email address and the profile details you enter (education, skills, projects, experience, links, writing preferences).</p>
+              <h3>Résumés</h3>
+              <p>Résumé PDFs are stored in private storage, never at a public link. They are used to attach to the emails you send and, if you ask, to suggest profile fields.</p>
+              <h3>Recruiters, opportunities and emails</h3>
+              <p>The recruiter contacts and job opportunities you add, the drafts and emails you write and send through AutoReach, their send status, reply status and follow-up reminders, and an activity log of these events.</p>
+              <h3>Open tracking (optional, off by default)</h3>
               <p>
-                When you sign in using Google OAuth, we collect your name and email address to identify you and manage your account.
+                If you turn on open tracking, AutoReach adds a small invisible image to emails you send. When the recipient's mail app loads it, we record the time and a coarse classification (for example "image proxy" or "probably a security scanner"). Recipients are not told about the image. Opens are approximate: image blocking hides some opens, and proxies and scanners can load images without anyone reading. We do not store IP addresses or locations. You can turn tracking off for all emails or for a single email, choose how long signals are kept, and delete all of them in Settings.
               </p>
-              <h3>Profile Data</h3>
+              <h3>Chrome extension</h3>
               <p>
-                You may provide additional information such as your degree, graduation year, location, and contact details. This data is stored securely in our Supabase database.
-              </p>
-              <h3>Resume and Files</h3>
-              <p>
-                If you upload your resume (PDF), it is stored in Supabase Storage and used exclusively as an email attachment in your outreach emails — nothing else.
-              </p>
-              <h3>OAuth Tokens</h3>
-              <p>
-                To send emails on your behalf, we securely store your Google OAuth access and refresh tokens server-side. These tokens are used exclusively to communicate with the Gmail API for email sending only.
-              </p>
-              <h3>Recruiter Contact Data</h3>
-              <p>
-                Recruiter contacts you add manually or import via CSV are stored in your account and used solely to address outreach emails as directed by you.
+                The extension keeps your sign-in session in Chrome's extension storage. On Gmail, its assist reads only the email addresses shown in recipient chips and conversation headers and sends them to your AutoReach account to show whether you've contacted those people; it does not read message bodies, and you can turn it off. When you choose to save a page as an opportunity, the extension reads that page's title, address, any text you selected, and the job details the site publishes for search engines; nothing is saved until you review it.
               </p>
             </div>
 
-            {/* User Control */}
             <div className="policy-section">
-              <h2>5. User Control</h2>
-              <p>AutoReach is designed to keep you fully in control at all times:</p>
+              <h2>5. AI processing</h2>
+              <p>
+                If the AutoReach server is configured with an AI provider (for example Anthropic, OpenAI, Google Gemini or Groq), then when you ask for a draft or for résumé suggestions, the relevant text is sent to that provider: your profile facts, the recruiter's name, title and company, the job details you saved, your own earlier AutoReach emails to that recruiter, and for résumé suggestions the résumé text. Data read from Gmail is never included. Without an AI provider, drafts are built from your templates on the AutoReach server.
+              </p>
+            </div>
+
+            <div className="policy-section">
+              <h2>6. Security</h2>
               <ul>
-                <li><strong>Explicit Consent:</strong> You must explicitly click "Connect Gmail" to grant the <code>gmail.send</code> permission. No emails are sent without this step.</li>
-                <li><strong>Your Content:</strong> You write and control all email content and templates. We never generate or modify your emails without your input.</li>
-                <li><strong>Your Recipient List:</strong> You choose which recruiters to contact. We never automatically discover or add contacts.</li>
-                <li><strong>Stop Anytime:</strong> You can pause or stop email sending at any time from within the extension.</li>
-                <li><strong>Disconnect Gmail:</strong> You can disconnect your Gmail OAuth at any time from the Settings page. This immediately revokes our access.</li>
-                <li><strong>Delete Your Account:</strong> You can request full deletion of your account and all associated data at any time by contacting us (see below).</li>
+                <li>Every request is authenticated, and each user's records are isolated in the database with row-level security as well as checks in the server code.</li>
+                <li>OAuth tokens are encrypted at rest; résumé files are private; all traffic uses HTTPS.</li>
+                <li>We never see or store your Google password.</li>
+                <li>Logs do not contain email bodies or tokens.</li>
               </ul>
             </div>
 
-            {/* Security Measures */}
             <div className="policy-section">
-              <h2>6. Security Measures</h2>
+              <h2>7. Service providers</h2>
               <ul>
-                <li><strong>OAuth 2.0:</strong> We use Google's OAuth 2.0 standard with refresh token rotation. We never see or store your Google password.</li>
-                <li><strong>Server-Side Token Storage:</strong> OAuth tokens are stored exclusively server-side in Supabase (never in Chrome extension storage or the browser).</li>
-                <li><strong>Encryption:</strong> Sensitive information, including OAuth tokens, is encrypted at rest.</li>
-                <li><strong>HTTPS Only:</strong> All communications between the extension, our backend, and external APIs are over HTTPS.</li>
-                <li><strong>No Password Storage:</strong> We never store or have access to your Google account password.</li>
-                <li><strong>Infrastructure:</strong> Backend services are hosted on Railway.app; database and storage on Supabase's secure, SOC 2-compliant infrastructure.</li>
-              </ul>
-            </div>
-
-            {/* How We Use Your Data */}
-            <div className="policy-section">
-              <h2>7. How We Use Your Data</h2>
-              <p>We use the collected data exclusively for the following purposes:</p>
-              <ul>
-                <li>To authenticate you and manage your account.</li>
-                <li>To send outreach emails on your behalf via the Gmail API.</li>
-                <li>To manage your recruiter contacts and email templates.</li>
-                <li>To store and attach your resume to outreach emails.</li>
+                <li><strong>Supabase:</strong> sign-in, database and private file storage.</li>
+                <li><strong>Railway (or another host chosen by the operator):</strong> runs the AutoReach server.</li>
+                <li><strong>Google Gmail API:</strong> sending and reply detection, as described above.</li>
+                <li><strong>AI provider (optional):</strong> drafting and résumé suggestions, as described in section 5.</li>
+                <li><strong>Hunter.io (optional):</strong> only if the operator configures it and you ask for address suggestions for a named person; the name and company domain are sent. Suggestions are always marked unverified.</li>
               </ul>
               <div className="highlight-box">
-                <p><strong>We do NOT sell your data.</strong> We do NOT share your data with advertisers or third parties. We do NOT use your data for any purpose other than providing and improving the AutoReach service.</p>
+                <p><strong>We do not sell your data</strong> or share it with advertisers.</p>
               </div>
             </div>
 
-            {/* Data Storage & Third Parties */}
             <div className="policy-section">
-              <h2>8. Data Storage &amp; Third-Party Services</h2>
-              <p>Your data is stored using industry-standard security measures via the following trusted providers:</p>
+              <h2>8. Your choices, export and deletion</h2>
               <ul>
-                <li><strong>Supabase:</strong> Used for database management, user authentication, OAuth token storage, and file storage.</li>
-                <li><strong>Railway.app:</strong> Our backend API and email sending worker services are hosted here.</li>
-                <li><strong>Google Gmail API:</strong> Used exclusively to send emails on behalf of the user.</li>
+                <li><strong>Pause:</strong> stop all sending at once from the dashboard or the extension.</li>
+                <li><strong>Export:</strong> download all your AutoReach data as JSON, and your recruiters as CSV, from Settings → Data and privacy.</li>
+                <li><strong>Delete:</strong> delete your account from Settings → Data and privacy. This revokes Gmail access, deletes your résumé files and permanently removes your records. Emails you already sent remain in your Gmail.</li>
+                <li><strong>Retention:</strong> your records are kept until you delete them or your account; open-tracking signals are deleted automatically after the period you choose.</li>
               </ul>
-              <p>We do not use any other third-party services that receive your personal or Gmail data.</p>
             </div>
 
-            {/* User Rights & Deletion */}
             <div className="policy-section">
-              <h2>9. User Rights &amp; Data Deletion</h2>
+              <h2>9. Contact</h2>
               <p>
-                You have the right to access, update, or delete your personal information at any time. To request account deletion and removal of all associated data (profile, resume, email history, and OAuth tokens), please contact us at the address below.
-              </p>
-              <p>
-                You can also revoke AutoReach's access to your Google account at any time through your{' '}
-                <a href="https://myaccount.google.com/permissions" target="_blank" rel="noreferrer">Google Account Security settings</a>.
-              </p>
-            </div>
-
-            {/* Contact */}
-            <div className="policy-section">
-              <h2>10. Contact Information</h2>
-              <p>If you have any questions about this Privacy Policy, please contact:</p>
-              <p>
-                <strong>App Name:</strong> AutoReach<br />
+                <strong>App:</strong> AutoReach<br />
                 <strong>Developer:</strong> Saksham Raina<br />
                 <strong>Email:</strong>{' '}
                 <a href="mailto:sakshamraina16@gmail.com">sakshamraina16@gmail.com</a><br />
