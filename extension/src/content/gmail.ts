@@ -16,7 +16,8 @@ import { assistItems, composeDialogs, composeRecipients, threadParticipants, typ
 
 const CACHE_MS = 2 * 60_000;
 const SELF_VIEW_EVERY_MS = 15_000;
-const cache = new Map<string, { at: number; result: RecruiterLookupResult }>();
+/** Looked-up addresses, including ones the server returned nothing for (null), so they aren't asked about again. */
+const cache = new Map<string, { at: number; result: RecruiterLookupResult | null }>();
 let enabled = true;
 let signedOut = false;
 /** After a failed lookup, wait before asking again (Gmail changes its DOM constantly). */
@@ -53,6 +54,7 @@ async function lookup(emails: string[]): Promise<RecruiterLookupResult[] | null>
     signedOut = false;
     failures = 0;
     retryAt = 0;
+    for (const e of missing) cache.set(e, { at: now, result: null });
     for (const r of res.data) cache.set(r.email.toLowerCase(), { at: now, result: r });
   }
   return emails.map((e) => cache.get(e)?.result).filter((r): r is RecruiterLookupResult => !!r);
@@ -171,7 +173,12 @@ function startSelfView(emails: string[]) {
   stopSelfView();
   if (!emails.length) return;
   const ping = () => {
-    if (document.visibilityState === 'visible') void chrome.runtime.sendMessage({ type: 'gmail:selfView', emails }).catch(() => teardown());
+    if (document.visibilityState !== 'visible') return;
+    try {
+      void chrome.runtime.sendMessage({ type: 'gmail:selfView', emails }).catch(() => teardown());
+    } catch {
+      teardown(); // "Extension context invalidated" is thrown synchronously once the extension is gone
+    }
   };
   ping();
   selfViewTimer = setInterval(ping, SELF_VIEW_EVERY_MS);

@@ -58,6 +58,8 @@ const EnvSchema = z.object({
 
   HUNTER_API_KEY: optionalString,
   GMAIL_REPLY_DETECTION: bool(true),
+  /** Optional: the only extension IDs allowed to receive Gmail connection codes. */
+  EXTENSION_IDS: optionalString,
 
   WORKERS_ENABLED: bool(true),
   ENABLE_DEV_LOGIN: bool(false),
@@ -98,6 +100,8 @@ export interface AppConfig {
     reason?: string;
     /** Whether to request gmail.metadata and run reply detection. */
     replyDetection: boolean;
+    /** Extension IDs allowed as the Gmail connection redirect; empty = any well-formed ID. */
+    extensionIds: string[];
   };
   tokenEncryptionKey?: Buffer;
   ai: {
@@ -164,6 +168,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   // Auth
   const devLoginEnabled = e.ENABLE_DEV_LOGIN && !isProd;
   if (e.ENABLE_DEV_LOGIN && isProd) problems.push('ENABLE_DEV_LOGIN must not be set in production.');
+  const extensionIds = e.EXTENSION_IDS?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  for (const id of extensionIds) if (!/^[a-p]{32}$/.test(id)) problems.push(`EXTENSION_IDS: "${id}" is not a Chrome extension ID (32 letters a–p).`);
   if (devLoginEnabled && !e.DEV_JWT_SECRET) problems.push('ENABLE_DEV_LOGIN=true requires DEV_JWT_SECRET (any long random string).');
   if (devLoginEnabled && !dbHostIsLocal) problems.push('ENABLE_DEV_LOGIN is only allowed with a local database (it creates users in auth.users).');
   if (!devLoginEnabled && !e.SUPABASE_JWT_SECRET && !(e.SUPABASE_URL && e.SUPABASE_ANON_KEY)) {
@@ -231,6 +237,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       redirectUri: `${e.API_PUBLIC_URL}/api/integrations/gmail/callback`,
       reason: gmailReason,
       replyDetection: e.GMAIL_REPLY_DETECTION,
+      extensionIds,
     },
     tokenEncryptionKey: tokenKey,
     ai: {

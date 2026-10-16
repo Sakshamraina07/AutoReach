@@ -70,6 +70,8 @@ stored connections can't be decrypted and everyone has to reconnect Gmail once.
    the signed-in user**, exchanges the code with the PKCE verifier, refuses the connection
    if the send permission was unticked, and encrypts and stores the tokens. A consent link
    forwarded to someone else therefore can't attach their mailbox to your account.
+   Set `EXTENSION_IDS` on the API to your extension's ID so only that extension can
+   receive the code when connecting from the extension.
 5. Access tokens are refreshed shortly before they expire. If Google answers
    `invalid_grant` (revoked, password change, or an expired test-mode token), the
    connection is marked **needs reconnecting**: sending stops with a clear message and the

@@ -36,6 +36,7 @@ and extension show the message and the reference. Search the API logs for the
 | `REPLY_DETECTION_DISABLED` | The server runs with `GMAIL_REPLY_DETECTION=false` | Mark replies on each email, or enable it on the server |
 | `OAUTH_STATE_INVALID` | The connection link expired (10 minutes), was already used, or was finished while signed in as a different AutoReach user | Start the connection again from Settings → Gmail while signed in as the account that should send |
 | "This Gmail connection link has expired or was already used" (page on the API's address) | Same as above, seen when Google's redirect arrives after the link expired or a second time | Start again |
+| `EXTENSION_NOT_ALLOWED` | The API has `EXTENSION_IDS` set and this extension's ID isn't in it (an unpacked extension's ID depends on its folder) | Add the ID shown on `chrome://extensions` to `EXTENSION_IDS` |
 | Extension: "the Google window was closed" / "access was declined" (`GMAIL_CONNECT_CANCELLED`, `GMAIL_CONNECT_DECLINED`) | The consent window was closed or Cancel was pressed | Click Connect again and allow both permissions |
 | Google shows `redirect_uri_mismatch` | The callback isn't registered | Add `${API_PUBLIC_URL}/api/integrations/gmail/callback` to the OAuth client exactly |
 | Google shows "This app is blocked" / "unverified" | The consent screen is in Testing and your address isn't a test user, or the app isn't verified | Add yourself under Audience → Test users |

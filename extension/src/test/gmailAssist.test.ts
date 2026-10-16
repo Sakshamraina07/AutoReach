@@ -67,6 +67,13 @@ describe('Gmail assist', () => {
     expect(document.querySelector('autoreach-assist')).toBeNull();
   });
 
+  it('does not ask again about an address the server returned nothing for', async () => {
+    const { send } = await loadAssist(async () => ({ ok: true, status: 200, data: [] }));
+    await vi.advanceTimersByTimeAsync(600);
+    await gmailChurn(30_000);
+    expect(lookups(send)).toBe(1);
+  });
+
   it('shows the card once a lookup succeeds', async () => {
     const { send } = await loadAssist(async (m) =>
       m.type === 'gmail:lookup'

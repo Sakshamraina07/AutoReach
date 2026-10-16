@@ -86,6 +86,7 @@ and redeploy the v1 code.
    GOOGLE_CLIENT_SECRET=...
    TOKEN_ENCRYPTION_KEY=...                      # 32 random bytes, base64; keep it stable
    AI_PROVIDER=none                              # or see AI_PROVIDERS.md
+   EXTENSION_IDS=<your extension ID>             # optional; limits Gmail connect from the extension
    TRUST_PROXY_HOPS=1
    ```
 

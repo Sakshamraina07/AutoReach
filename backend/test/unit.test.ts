@@ -210,3 +210,12 @@ describe('résumé storage ownership', () => {
     expect(ownsStoragePath(me, `${me}-x/../../etc/passwd`)).toBe(false);
   });
 });
+
+describe('EXTENSION_IDS', () => {
+  it('accepts Chrome extension IDs and rejects anything else', () => {
+    const base = { DATABASE_URL: 'postgres://u@localhost/db', SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'anon' };
+    expect(loadConfig({ ...base, EXTENSION_IDS: 'abcdefghijklmnopabcdefghijklmnop, bcdefghijklmnopabcdefghijklmnopa' }).gmail.extensionIds).toHaveLength(2);
+    expect(loadConfig(base).gmail.extensionIds).toEqual([]);
+    expect(() => loadConfig({ ...base, EXTENSION_IDS: 'not-an-id' })).toThrow(ConfigError);
+  });
+});

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
 import { configureApi } from './lib/api';
@@ -67,9 +67,11 @@ export function App() {
  */
 function ComposerRoute() {
   const location = useLocation();
+  const navigationType = useNavigationType();
   const [instance, setInstance] = useState({ key: location.key, seen: location.key });
   if (location.key !== instance.seen) {
-    const internal = (location.state as { composerInternal?: boolean } | null)?.composerInternal === true;
+    // Back/forward restores an older entry (its saved state included): always start fresh then.
+    const internal = navigationType !== 'POP' && (location.state as { composerInternal?: boolean } | null)?.composerInternal === true;
     setInstance({ key: internal ? instance.key : location.key, seen: location.key });
   }
   return <Composer key={instance.key} />;

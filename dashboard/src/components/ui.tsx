@@ -209,29 +209,41 @@ export function TagInput({ value, onChange, placeholder, id }: { value: string[]
 /* Dialog & drawer                                                     */
 /* ------------------------------------------------------------------ */
 
-/** Open dialogs and drawers, innermost last: Escape closes only the top one. */
-const overlayStack: symbol[] = [];
+/**
+ * Open dialogs and drawers. Escape closes only the top one: the most deeply nested (a
+ * dialog opened from inside a drawer), then the most recently opened. Nesting depth comes
+ * from context because effects of overlays mounted together run inner-first.
+ */
+const OverlayDepth = createContext(0);
+const openOverlays: { id: symbol; depth: number; seq: number }[] = [];
+let overlaySeq = 0;
 
-function useEscape(onClose: () => void) {
+function topOverlay(): symbol | undefined {
+  let top: (typeof openOverlays)[number] | undefined;
+  for (const o of openOverlays) if (!top || o.depth > top.depth || (o.depth === top.depth && o.seq > top.seq)) top = o;
+  return top?.id;
+}
+
+function useEscape(onClose: () => void, depth: number) {
   const latest = useRef(onClose);
   useEffect(() => {
     latest.current = onClose;
   }, [onClose]);
   useEffect(() => {
-    const id = Symbol('overlay');
-    overlayStack.push(id);
+    const entry = { id: Symbol('overlay'), depth, seq: ++overlaySeq };
+    openOverlays.push(entry);
     const h = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || overlayStack.at(-1) !== id) return;
+      if (e.key !== 'Escape' || topOverlay() !== entry.id) return;
       e.stopPropagation();
       latest.current();
     };
     window.addEventListener('keydown', h);
     return () => {
       window.removeEventListener('keydown', h);
-      const i = overlayStack.lastIndexOf(id);
-      if (i >= 0) overlayStack.splice(i, 1);
+      const i = openOverlays.indexOf(entry);
+      if (i >= 0) openOverlays.splice(i, 1);
     };
-  }, []);
+  }, [depth]);
 }
 
 function useFocusOnOpen() {
@@ -246,43 +258,49 @@ function useFocusOnOpen() {
 }
 
 export function Dialog({ title, onClose, children, footer, width = 'max-w-lg' }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: string }) {
-  useEscape(onClose);
+  const depth = useContext(OverlayDepth) + 1;
+  useEscape(onClose, depth);
   const ref = useFocusOnOpen();
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={clsx('w-full rounded-lg border border-line bg-surface shadow-2xl outline-none', width)}>
-        <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-lg">{title}</h2>
-          <button data-close type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-muted hover:bg-raised hover:text-ink">
-            <X className="h-4 w-4" />
-          </button>
+    <OverlayDepth.Provider value={depth}>
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-[10vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className={clsx('w-full rounded-lg border border-line bg-surface shadow-2xl outline-none', width)}>
+          <div className="flex items-center justify-between border-b border-line px-4 py-3">
+            <h2 className="text-lg">{title}</h2>
+            <button data-close type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-muted hover:bg-raised hover:text-ink">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="max-h-[70vh] overflow-y-auto px-4 py-4">{children}</div>
+          {footer && <div className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-4 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-line px-4 py-3">{footer}</div>}
       </div>
-    </div>,
+    </OverlayDepth.Provider>,
     document.body,
   );
 }
 
 export function Drawer({ title, onClose, children, actions }: { title: ReactNode; onClose: () => void; children: ReactNode; actions?: ReactNode }) {
-  useEscape(onClose);
+  const depth = useContext(OverlayDepth) + 1;
+  useEscape(onClose, depth);
   const ref = useFocusOnOpen();
   return createPortal(
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" className="flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface outline-none">
-        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-3">
-          <div className="min-w-0 flex-1">{title}</div>
-          <div className="flex items-center gap-2">
-            {actions}
-            <button data-close type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-muted hover:bg-raised hover:text-ink">
-              <X className="h-4 w-4" />
-            </button>
+    <OverlayDepth.Provider value={depth}>
+      <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+        <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" className="flex h-full w-full max-w-2xl flex-col border-l border-line bg-surface outline-none">
+          <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-3">
+            <div className="min-w-0 flex-1">{title}</div>
+            <div className="flex items-center gap-2">
+              {actions}
+              <button data-close type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-muted hover:bg-raised hover:text-ink">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+          <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
       </div>
-    </div>,
+    </OverlayDepth.Provider>,
     document.body,
   );
 }

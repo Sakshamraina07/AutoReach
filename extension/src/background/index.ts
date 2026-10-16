@@ -7,17 +7,12 @@ import { config, dashboardComposeLink } from '../lib/config';
 import { GMAIL_ASSIST_KEY, PREFILL_KEY, type ApiErrorShape, type ApiResult, type Message } from '../lib/protocol';
 import { callApi } from './api';
 import { connectGmail } from './gmailConnect';
+import { sessionStorageArea } from './secureStore';
 import { isAllowedSender } from './senders';
 import { AuthError, authState, devSignIn, getToken, refreshToken, signIn, signOut } from './auth';
 
-// The session (Supabase tokens) lives in chrome.storage.local. Content scripts can read
-// local storage by default; restrict it to the extension's own pages and this worker.
-// Called on every start of the worker, before anything else runs.
-try {
-  void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
-} catch {
-  /* not available in this Chrome version */
-}
+// Close the session's storage to content scripts before anything else runs (see secureStore.ts).
+void sessionStorageArea();
 
 const api = <T>(req: Parameters<typeof callApi>[0]) => callApi<T>(req, { apiUrl: config.apiUrl, fetch: (input, init) => fetch(input, init), getToken, refreshToken });
 

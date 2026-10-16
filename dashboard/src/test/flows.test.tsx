@@ -78,6 +78,29 @@ describe('stacked overlays', () => {
     );
   }
 
+  it('closes a dialog nested inside a drawer first, even when both open together', () => {
+    function Nested() {
+      const [drawer, setDrawer] = useState(true);
+      const [dialog, setDialog] = useState(true);
+      return drawer ? (
+        <Drawer title="Recruiter" onClose={() => setDrawer(false)}>
+          <p>outer body</p>
+          {dialog && (
+            <Dialog title="Confirm" onClose={() => setDialog(false)}>
+              <p>inner body</p>
+            </Dialog>
+          )}
+        </Drawer>
+      ) : null;
+    }
+    render(<Nested />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByText('inner body')).toBeNull();
+    expect(screen.getByText('outer body')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByText('outer body')).toBeNull();
+  });
+
   it('closes only the innermost one on Escape', () => {
     render(<Stack />);
     fireEvent.keyDown(window, { key: 'Escape' });

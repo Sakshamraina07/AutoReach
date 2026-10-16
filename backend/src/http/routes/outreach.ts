@@ -228,6 +228,10 @@ export function outreachRoutes(deps: Deps, limiters: { ai: RequestHandler; send:
   r.post('/integrations/gmail/authorize', async (req, res) => {
     const uid = userId(req);
     const { return_to, extension_redirect } = parse(gmailAuthorizeSchema, req.body ?? {});
+    const allowed = deps.config.gmail.extensionIds;
+    if (return_to === 'extension' && allowed.length && !allowed.includes(new URL(extension_redirect!).hostname.split('.')[0]!)) {
+      throw badRequest('This extension is not allowed to connect Gmail on this server. Add its ID to EXTENSION_IDS.', undefined, 'EXTENSION_NOT_ALLOWED');
+    }
     res.json(await deps.db.withUser(uid, (tx) => createAuthorization(deps, tx, uid, return_to, req.user?.email, return_to === 'extension' ? extension_redirect : null)));
   });
   r.post('/integrations/gmail/complete', async (req, res) => {

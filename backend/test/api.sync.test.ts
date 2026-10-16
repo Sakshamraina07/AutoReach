@@ -396,6 +396,17 @@ describe('Gmail OAuth connection', () => {
     const denied = await callback(`error=access_denied&state=${encodeURIComponent(state2)}`);
     expect(new URL(denied.headers.location!).searchParams.get('gmail_error')).toBe('access_denied');
     expect(new URL(denied.headers.location!).searchParams.get('gmail_code')).toBeNull();
+    // With EXTENSION_IDS set, only those extensions may receive the code.
+    const ids = env.deps.config.gmail.extensionIds;
+    env.deps.config.gmail.extensionIds = ['bcdefghijklmnopabcdefghijklmnopa'];
+    try {
+      const refused = await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'extension', extension_redirect: redirect });
+      expect(refused.status).toBe(400);
+      expect(refused.body.error.code).toBe('EXTENSION_NOT_ALLOWED');
+      await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'extension', extension_redirect: 'https://bcdefghijklmnopabcdefghijklmnopa.chromiumapp.org/gmail' }).expect(200);
+    } finally {
+      env.deps.config.gmail.extensionIds = ids;
+    }
   });
 
   it('can be set up to send only, without the restricted header permission', async () => {

@@ -63,7 +63,7 @@ Supabase, Railway or Gmail accounts.
 * **Optional address suggestions** in the add-recruiter form, always unverified, requiring
   confirmation before any send.
 * TypeScript across the API, dashboard, extension and a shared package; database migrations;
-  159 automated tests; deployment config for Railway and Vercel.
+  165 automated tests; deployment config for Railway and Vercel.
 
 ## Removed
 

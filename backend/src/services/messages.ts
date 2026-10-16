@@ -628,7 +628,9 @@ async function abandonAttempt(deps: Deps, userId: string, id: string, attempt: n
        WHERE user_id = $1 AND id = $2 AND attempt_count = $3 AND send_status = 'unknown' AND error_code = 'SEND_OUTCOME_UNKNOWN'`,
       [userId, id, attempt, message],
     );
-    return getMessageDetail(tx, userId, id);
+    const m = await getMessageDetail(tx, userId, id);
+    await logActivity(tx, userId, 'email_failed', `Not sent: "${m.subject.slice(0, 100)}" — stopped before reaching Gmail`, { recruiterId: m.recruiter_id, messageId: id }, { code: 'SEND_PREPARATION_TIMEOUT' });
+    return m;
   });
   return { outcome: detail.send_status === 'sent' ? 'sent' : detail.send_status === 'unknown' ? 'unknown' : 'failed', message: detail, error: { code: 'SEND_PREPARATION_TIMEOUT', message } };
 }

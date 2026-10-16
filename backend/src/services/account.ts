@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Deps } from '../context.js';
 import { disconnect } from './gmail/connection.js';
+import { ownsStoragePath } from './resumes.js';
 
 const EXPORT_TABLES: Array<{ table: string; columns: string; order?: string }> = [
   { table: 'profiles', columns: '*' },
@@ -43,7 +44,10 @@ export async function exportAccount(deps: Deps, userId: string): Promise<Record<
  */
 export async function deleteAccount(deps: Deps, userId: string): Promise<{ auth_user_deleted: boolean }> {
   await disconnect(deps, userId).catch((err) => deps.logger.warn({ err }, 'gmail disconnect during account deletion failed'));
-  const paths = await deps.db.withUser(userId, async (tx) => (await tx.many<{ storage_path: string }>(`SELECT storage_path FROM resumes WHERE user_id = $1`, [userId])).map((r) => r.storage_path));
+  // Only this user's own objects: a row imported from v1 metadata could name someone else's.
+  const paths = await deps.db.withUser(userId, async (tx) =>
+    (await tx.many<{ storage_path: string }>(`SELECT storage_path FROM resumes WHERE user_id = $1`, [userId])).map((r) => r.storage_path).filter((p) => ownsStoragePath(userId, p)),
+  );
   if (paths.length) await deps.storage.remove(paths);
 
   await deps.db.withUser(userId, async (tx) => {

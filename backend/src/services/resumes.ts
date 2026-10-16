@@ -100,6 +100,10 @@ export async function updateResume(
 }
 
 export async function deleteResume(tx: Tx, storage: FileStorage, userId: string, id: string): Promise<void> {
+  // Lock order must match sending (email message row, then user_settings): deleting the row
+  // nulls user_settings.default_resume_id before email_messages.resume_id, so lock the
+  // messages that attach this résumé first, or a send in progress can deadlock with us.
+  await tx.query(`SELECT 1 FROM email_messages WHERE user_id = $1 AND resume_id = $2 ORDER BY id FOR UPDATE`, [userId, id]);
   const row = await tx.maybeOne<{ storage_path: string; is_default: boolean; legacy: boolean }>(
     `DELETE FROM resumes WHERE user_id = $1 AND id = $2 RETURNING storage_path, is_default, legacy`,
     [userId, id],
@@ -113,12 +117,6 @@ export async function deleteResume(tx: Tx, storage: FileStorage, userId: string,
   if (ownsStoragePath(userId, row.storage_path)) await storage.remove([row.storage_path]);
 }
 
-/**
- * Storage keys a user's résumé row may point at: files uploaded through 2.0
- * (`<userId>/<id>.pdf`) and v1 uploads (`<userId>-<timestamp>.<ext>`). v1 rows were
- * imported from user-editable metadata, so anything else is treated as missing and
- * never read or deleted.
- */
 /** A send never waits on storage for longer than this (the stale-send sweeper runs at 10 minutes). */
 const STORAGE_TIMEOUT_MS = 60_000;
 
@@ -136,6 +134,12 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   }
 }
 
+/**
+ * Storage keys a user's résumé row may point at: files uploaded through 2.0
+ * (`<userId>/<id>.pdf`) and v1 uploads (`<userId>-<timestamp>.<ext>`). v1 rows were
+ * imported from user-editable metadata, so anything else is treated as missing and
+ * never read or deleted.
+ */
 export function ownsStoragePath(userId: string, storagePath: string): boolean {
   if (storagePath.includes('..')) return false;
   if (storagePath.startsWith(`${userId}/`)) return /^[A-Za-z0-9._-]+$/.test(storagePath.slice(userId.length + 1));

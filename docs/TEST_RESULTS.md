@@ -13,28 +13,31 @@ npm run check   # typecheck → lint → tests → production builds
 ```
 
 Result: **exit code 0**: TypeScript type checks for all four workspaces, ESLint with no
-errors or warnings, **159 of 159 tests passed**, and the production builds of the API,
+errors or warnings, **165 of 165 tests passed**, and the production builds of the API,
 dashboard and extension completed with no warnings.
 
 | Workspace | Test files | Tests | What they run against |
 |---|---|---|---|
 | `packages/shared` | 1 | 26 | Pure functions (validation, status rules, quality checks, templates, dates) |
-| `backend` | 6 | 90 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
-| `dashboard` | 2 | 12 | React components in jsdom (Testing Library) |
-| `extension` | 6 | 31 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
-| **Total** | **15** | **159** | |
+| `backend` | 6 | 92 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
+| `dashboard` | 2 | 13 | React components in jsdom (Testing Library) |
+| `extension` | 7 | 34 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
+| **Total** | **16** | **165** | |
 
 Each backend test file gets its own fresh database; the migrations run from scratch, including
 a reconstruction of the v1 schema, so the migration tests start from v1-shaped data.
 
 ### Checks that the tests catch the bugs they target
 
-Two of the new tests were run against deliberately broken code to make sure they fail:
+Some of the new tests were run against deliberately broken code to make sure they fail:
 
 * With the per-user lock in `lockSendSlot` removed, the daily-limit tests failed in each of
   three runs (two sends approved at the same moment both went out under a limit of one).
-* With the Gmail card's backoff removed, two of the four Gmail-assist tests failed (the
-  card asked the API again on every Gmail re-render).
+* With the message lock at the start of `deleteResume` removed, the résumé-deletion test
+  failed after about a second: PostgreSQL detected the deadlock between deleting the default
+  résumé and a send holding that résumé's email.
+* With the Gmail card's backoff removed, the two backoff tests failed (the card asked the
+  API again on every Gmail re-render).
 
 The code was restored afterwards and the full suite passed (above).
 
@@ -53,14 +56,15 @@ access from the sandbox), so no email was actually sent.
 | **Composer** | Template draft filled from the profile; the send dialog showed "Gmail sending isn't set up on this server yet…" and the Send button was disabled |
 | **Composer, fresh instance** | With text typed for one recruiter, the sidebar's **New outreach** opened an empty composer; saving a draft (which adds `?draft=` to the address) kept the composer's state |
 | **Scheduling** | The time field showed "Asia/Kolkata time (your time zone in Settings)" and a minimum of the current time; a past time was refused with "That time has already passed…" and nothing was queued |
+| **"Connect Gmail" from the send dialog** (API with a Google client configured, unsaved draft) | The draft was saved, and the page went to Settings → Gmail and stayed there |
 | **Failed draft save before sending** | With the draft's save request forced to fail, **Send email** showed the save error and made **no** send request (it no longer falls back to the last saved version) |
 | **Address from the Gmail card** (`/outreach/new?email=…&name=…`) | The add-recruiter dialog opened with the address and name filled in |
-| **Gmail connection, dashboard** (API given a placeholder Google client) | The consent URL asked for `openid email gmail.send gmail.metadata` with S256 PKCE and a state stored for the signed-in user. Google's redirect to the API was handed to `/gmail/callback`, which removed the code from the address bar and completed the connection; the token exchange then failed with `ENOTFOUND` (no route to Google from the sandbox), the page said so, and the state was used up. Opening the same kind of link while signed in as **another user** showed "started from a different AutoReach account…" and left the first user's state untouched. A declined consent showed "access was declined" with **Back to settings**. An unknown state got the API's own 400 page |
+| **Gmail connection, dashboard** (API given a placeholder Google client; the second user was brand-new) | The consent URL asked for `openid email gmail.send gmail.metadata` with S256 PKCE and a state stored for the signed-in user. Google's redirect to the API was handed to `/gmail/callback`, which removed the code from the address bar and completed the connection; the token exchange then failed with `ENOTFOUND` (no route to Google from the sandbox), the page said so, and the state was used up. Opening the same kind of link while signed in as **another user** showed "started from a different AutoReach account…" and left the first user's state untouched. A declined consent showed "access was declined" with **Back to settings**. An unknown state got the API's own 400 page |
 | **Extension popup and side panel** (unpacked development build) | Development sign-in; follow-ups badge `5`; recent outreach; adding an existing recruiter warned "already saved … and you've emailed them once"; the side-panel composer drafted from the template, and its review screen showed the Gmail notice with Send disabled |
 | **Gmail assist** (a local page served at `https://mail.google.com/…` that reproduces the attributes Gmail uses for people) | Reading a thread with a known recruiter recorded the "probably you" window; composing to a known and an unknown address showed the duplicate warning and "Not in AutoReach"; inserting a draft filled subject and body and refused to overwrite existing text; **Write with AutoReach** opened the side panel; turning the assist off removed the card. No page errors |
 | **Gmail connection, extension** (a local HTTPS stand-in answered for `accounts.google.com`) | `chrome.identity` opened the consent page with the expected scopes; the API's callback redirected to `https://<id>.chromiumapp.org/gmail`, which `launchWebAuthFlow` captured; the service worker completed the connection as the signed-in user; the token exchange failed with `ENOTFOUND` (sandbox) and the popup showed that error |
 | **Session storage closed to content scripts** | With a throwaway test extension on Chromium 141: after `chrome.storage.local.setAccessLevel({accessLevel: 'TRUSTED_CONTEXTS'})`, a content script's `chrome.storage.local.get` threw "Access to storage is not allowed from this context", while `chrome.storage.sync` stayed readable |
-| **Production mode** (`NODE_ENV=production`, built `dist/`) | `npm run db:migrate:prod` applied none of 3 (already applied); `/healthz` → `{"status":"ok"}`; `/readyz` → database ok, no pending migrations, each missing integration named; `POST /api/dev/login` → 404; `/api/me` without a token → 401 `UNAUTHENTICATED`; starting with `ENABLE_DEV_LOGIN=true` was refused ("must not be set in production") |
+| **Production mode** (`NODE_ENV=production`, built `dist/`) | `npm run db:migrate:prod` applied none of 3 (already applied); `/healthz` → `{"status":"ok"}`; `/readyz` → database ok, no pending migrations, each missing integration named; `POST /api/dev/login` → 404; `/api/me` without a token → 401 `UNAUTHENTICATED`; starting with `ENABLE_DEV_LOGIN=true` was refused ("must not be set in production"), and so was a malformed `EXTENSION_IDS` |
 | **Extension packaging** | `npm run package -w @autoreach/extension` refused a build pointing at `localhost` |
 
 ## Not tested
@@ -137,7 +141,7 @@ Generated from the test runner's JSON output for the run above.
 - opportunities › creates an opportunity, derives role category and skills, links recruiters, explains match
 - settings › stores current time-zone names even when the browser reports an old alias
 
-### `backend/test/api.send.test.ts` (26)
+### `backend/test/api.send.test.ts` (27)
 
 - résumé storage › stores PDFs privately with checksums; first upload becomes default
 - résumé storage › rejects non-PDF uploads
@@ -164,6 +168,7 @@ Generated from the test runner's JSON output for the run above.
 - send safety › keeps simultaneous sends within the daily limit
 - send safety › stops before Gmail when the attempt was taken over while preparing
 - send safety › resolving an old v1 "unknown" as sent uses its creation time and creates no reminder
+- send safety › deleting the default résumé while a send holds its message does not deadlock
 - send safety › serves other users’ queues while one user is waiting on spacing
 
 ### `backend/test/api.sync.test.ts` (21)
@@ -200,7 +205,7 @@ Generated from the test runner's JSON output for the run above.
 - v1 → v2 migration preserves data › enforces per-user isolation for the application role and locks out public roles
 - migration on a hand-made v1 schema with enum types and a unique index › converts enum columns, drops the case-sensitive unique index and keeps history on recruiter delete
 
-### `backend/test/unit.test.ts` (15)
+### `backend/test/unit.test.ts` (16)
 
 - crypto › round-trips with AES-256-GCM and detects tampering
 - crypto › computes RFC 7636 S256 challenges
@@ -217,6 +222,7 @@ Generated from the test runner's JSON output for the run above.
 - contact discovery suggestions › uses Hunter.io when configured, keeps its source and still marks it unverified
 - contact discovery suggestions › degrades to patterns when the lookup service fails
 - résumé storage ownership › accepts only the user’s own 2.0 and v1 object keys
+- EXTENSION_IDS › accepts Chrome extension IDs and rejects anything else
 
 ### `dashboard/src/test/components.test.tsx` (8)
 
@@ -229,11 +235,12 @@ Generated from the test runner's JSON output for the run above.
 - Settings › only enables saving after a change and rejects an impossible spacing range
 - Settings › describes Gmail access as headers-only and offers reconnecting when access expired
 
-### `dashboard/src/test/flows.test.tsx` (4)
+### `dashboard/src/test/flows.test.tsx` (5)
 
 - Gmail connection callback page › finishes the connection as the signed-in user and returns to where it started
 - Gmail connection callback page › explains a declined consent without calling the API
 - Gmail connection callback page › shows the API’s reason when completing fails
+- stacked overlays › closes a dialog nested inside a drawer first, even when both open together
 - stacked overlays › closes only the innermost one on Escape
 
 ### `extension/src/test/api.test.ts` (9)
@@ -264,11 +271,12 @@ Generated from the test runner's JSON output for the run above.
 - assist card content › shows replies, bounces and do-not-contact distinctly
 - assist card content › marks unknown people without guessing anything about them
 
-### `extension/src/test/gmailAssist.test.ts` (4)
+### `extension/src/test/gmailAssist.test.ts` (5)
 
 - Gmail assist › backs off after a failed lookup instead of asking on every Gmail re-render
 - Gmail assist › waits minutes, not seconds, while signed out
 - Gmail assist › shuts itself down when the extension behind it was updated or removed
+- Gmail assist › does not ask again about an address the server returned nothing for
 - Gmail assist › shows the card once a lookup succeeds
 
 ### `extension/src/test/gmailConnect.test.ts` (5)
@@ -284,3 +292,8 @@ Generated from the test runner's JSON output for the run above.
 - manifest › asks only for the permissions the features need
 - manifest › runs the Gmail assist only on Gmail
 - manifest › accepts http only for localhost
+
+### `extension/src/test/secureStore.test.ts` (2)
+
+- where the session is stored › uses local storage once it is closed to content scripts
+- where the session is stored › falls back to session storage when local storage cannot be restricted

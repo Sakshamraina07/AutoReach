@@ -313,13 +313,15 @@ UI (e.g. "AI drafting is not configured on the server"). See `.env.example` and
   users, reply sync (reply, bounce, delay notice, auto-reply, ambiguous sender, deleted
   messages, truncated history, expired cursor), the two-step Gmail connection (completion bound
   to the user who started it, extension redirect, declined consent), follow-up
-  creation/cancellation, tracking token mapping and dedupe, analytics from stored rows.
+  creation/cancellation, résumé deletion during a send (lock order), tracking token mapping
+  and dedupe, analytics from stored rows.
 - **Dashboard**: component and flow tests (status/caveat rendering, settings, the Gmail callback
   page, stacked dialogs); a Playwright run against the real API in dev-login mode produces the
   screenshots in `docs/screenshots/`.
 - **Extension**: the service-worker API proxy (refresh once on 401, sender checks), page
   capture parsing, Gmail DOM reading, the Gmail card's backoff and shutdown after an update,
-  the Gmail connect flow, and the generated manifest's permissions.
+  the Gmail connect flow, where the session is stored, and the generated manifest's
+  permissions.
 - External services (Gmail, Google OAuth, AI providers, Supabase Storage) are exercised through
   their HTTP clients with injected transports in tests. Real-credential calls are **not** part of
   the automated suite and are listed as manual verification steps in `docs/DEPLOYMENT.md` (§8).

@@ -1,12 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config, supabaseConfigured } from '../lib/config';
 import type { AuthState } from '../lib/protocol';
+import { sessionStorageArea } from './secureStore';
 
-/** chrome.storage.local adapter so the session survives service-worker restarts. */
+/** Storage adapter so the session survives service-worker restarts (see secureStore.ts). */
 const chromeStorage = {
-  getItem: async (key: string) => ((await chrome.storage.local.get(key)) as Record<string, string | undefined>)[key] ?? null,
-  setItem: async (key: string, value: string) => chrome.storage.local.set({ [key]: value }),
-  removeItem: async (key: string) => chrome.storage.local.remove(key),
+  getItem: async (key: string) => ((await (await sessionStorageArea()).get(key)) as Record<string, string | undefined>)[key] ?? null,
+  setItem: async (key: string, value: string) => (await sessionStorageArea()).set({ [key]: value }),
+  removeItem: async (key: string) => (await sessionStorageArea()).remove(key),
 };
 
 let client: SupabaseClient | null = null;
@@ -36,7 +37,7 @@ interface DevSession {
 
 async function devSession(): Promise<DevSession | null> {
   if (!config.devLogin) return null;
-  const s = ((await chrome.storage.local.get(DEV_KEY)) as Record<string, DevSession | undefined>)[DEV_KEY];
+  const s = ((await (await sessionStorageArea()).get(DEV_KEY)) as Record<string, DevSession | undefined>)[DEV_KEY];
   return s && s.expiresAt > Date.now() + 30_000 ? s : null;
 }
 
@@ -114,12 +115,12 @@ export async function devSignIn(email: string, fetchImpl: typeof fetch = fetch):
   if (!res.ok) throw new AuthError('SIGN_IN_FAILED', `Development sign-in failed (${res.status}). Is the API running with ENABLE_DEV_LOGIN=true?`);
   const body = (await res.json()) as { access_token: string; expires_in: number; user: { email: string } };
   const session: DevSession = { token: body.access_token, email: body.user.email, expiresAt: Date.now() + body.expires_in * 1000 };
-  await chrome.storage.local.set({ [DEV_KEY]: session });
+  await (await sessionStorageArea()).set({ [DEV_KEY]: session });
   return authState();
 }
 
 export async function signOut(): Promise<AuthState> {
-  await chrome.storage.local.remove(DEV_KEY);
+  await (await sessionStorageArea()).remove(DEV_KEY);
   const sb = supabase();
   if (sb) await sb.auth.signOut({ scope: 'local' }).catch(() => undefined);
   return authState();

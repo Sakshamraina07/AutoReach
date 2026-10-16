@@ -477,7 +477,7 @@ export default function Composer() {
           blocking={blocking}
           findings={findings ?? []}
           kind={kind}
-          timezone={me.data?.settings.timezone ?? 'UTC'}
+          timezone={me.data?.settings.timezone ?? null}
           // Never fall back to the last saved version: what is sent must be what was reviewed.
           ensureDraft={async () => {
             const id = await saveDraft(true, true);
@@ -522,11 +522,13 @@ function SendDialog(props: {
   blocking: boolean;
   findings: QualityFinding[];
   kind: 'initial' | 'follow_up';
-  timezone: string;
+  /** The user's AutoReach time zone; null until settings have loaded (scheduling waits for it). */
+  timezone: string | null;
   ensureDraft: () => Promise<string>;
   onClose: () => void;
   onDone: (r: SendResponse) => void;
 }) {
+  const navigate = useNavigate();
   const [when, setWhen] = useState<'now' | 'queue' | 'schedule'>('now');
   const [at, setAt] = useState('');
   const [confirm, setConfirm] = useState({ confirm_duplicate: false, confirm_unverified_email: false, confirm_quality_override: false, confirm_after_reply: false });
@@ -542,6 +544,7 @@ function SendDialog(props: {
     try {
       let sendAt: string | null = null;
       if (when === 'schedule') {
+        if (!props.timezone) throw new Error('Your settings are still loading. Try again in a moment.');
         sendAt = zonedInputToUtc(at, props.timezone);
         if (!sendAt) throw new Error('Enter a date and time to schedule the email.');
         if (new Date(sendAt).getTime() <= Date.now()) throw new Error('That time has already passed. Pick a later time, or choose "Send now".');
@@ -614,7 +617,19 @@ function SendDialog(props: {
         <div role="alert" className="mb-4 rounded border border-warn/40 bg-warn/10 p-3 text-sm">
           <p>{props.gmailProblem.message}</p>
           {props.gmailProblem.action && (
-            <Link to="/settings?section=gmail" className="mt-1 inline-block font-medium" onClick={() => void props.ensureDraft().catch(() => undefined)}>
+            <Link
+              to="/settings?section=gmail"
+              className="mt-1 inline-block font-medium"
+              onClick={(e) => {
+                // Save first, then leave: saving a new draft updates this page's address, which
+                // would otherwise pull the user back here after they reached Settings.
+                e.preventDefault();
+                void props
+                  .ensureDraft()
+                  .catch(() => undefined)
+                  .finally(() => navigate('/settings?section=gmail'));
+              }}
+            >
               {props.gmailProblem.action}
             </Link>
           )}
@@ -646,11 +661,11 @@ function SendDialog(props: {
           ] as const
         ).map(([v, l]) => (
           <label key={v} className="flex items-center gap-2 text-sm">
-            <input type="radio" name="when" checked={when === v} onChange={() => setWhen(v)} />
+            <input type="radio" name="when" checked={when === v} onChange={() => setWhen(v)} disabled={v === 'schedule' && !props.timezone} />
             {l}
           </label>
         ))}
-        {when === 'schedule' && (
+        {when === 'schedule' && props.timezone && (
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <input
               type="datetime-local"

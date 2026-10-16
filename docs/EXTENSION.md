@@ -18,8 +18,8 @@ unverified (see [DEPLOYMENT.md](DEPLOYMENT.md) for the optional Hunter.io key).
 
 | Permission | Why |
 |---|---|
-| `storage` | Your sign-in session (local storage, which the extension closes to content scripts) and the Gmail-assist on/off preference (synced storage, the only value the Gmail script reads) |
-| `identity` | Google sign-in through `chrome.identity.launchWebAuthFlow` |
+| `storage` | Your sign-in session (closed to content scripts, see below) and the Gmail-assist on/off preference (synced storage, the only value the Gmail script reads) |
+| `identity` | Google sign-in and connecting Gmail, both through `chrome.identity.launchWebAuthFlow` |
 | `activeTab` + `scripting` | Read the current page once, after you click "Add opportunity" |
 | `sidePanel` | The composer |
 | `alarms` | Refresh the follow-ups badge every 15 minutes |
@@ -30,9 +30,10 @@ No `tabs`, no `<all_urls>`, no LinkedIn access, no remotely hosted code. Every A
 made by the service worker. The Gmail content script can ask it for three things only:
 look up the addresses on screen, record that you're reading a thread with a recruiter (so
 opens of your own sent email are labelled "probably you"), and open the composer. Your
-session lives in `chrome.storage.local`, which the service worker restricts to the
-extension's own pages (`setAccessLevel('TRUSTED_CONTEXTS')`), so the content script can't
-read the token.
+session lives in `chrome.storage.local` once the service worker has restricted it to the
+extension's own pages (`setAccessLevel('TRUSTED_CONTEXTS')`, verified on Chrome 141). If a
+Chrome version refuses that, the session is kept in `chrome.storage.session` instead, which
+content scripts can't read either; you'll then sign in again after restarting Chrome.
 
 ## Build
 
@@ -92,7 +93,8 @@ separate window (`chrome.identity`). When you allow access, Google returns to th
 hands the result to the extension's `https://<extension-id>.chromiumapp.org/gmail` address;
 the service worker then finishes the connection as you. The popup may close while the
 Google window is open; reopen it to see Gmail connected. No Supabase or Google Cloud setting
-is needed for this redirect: the API only accepts `chromiumapp.org` addresses here.
+is needed for this redirect: the API only accepts `chromiumapp.org` addresses here, and with
+`EXTENSION_IDS` set on the API, only your extension's.
 
 ## Recovering from problems
 

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createTestEnv, makePdf, PROFILE, type TestEnv } from './helpers/app.js';
 import { parseMime } from './helpers/fakeGoogle.js';
@@ -524,6 +525,30 @@ describe('send safety', () => {
     expect(r.send_status).toBe('sent');
     expect(new Date(r.sent_at).toISOString()).toBe(created);
     expect(await env.sql(`SELECT 1 FROM follow_ups WHERE original_message_id = $1 OR previous_message_id = $1`, [draft.id])).toHaveLength(0);
+  });
+
+  it('deleting the default résumé while a send holds its message does not deadlock', async () => {
+    const pdfC = makePdf('Resume C to delete');
+    const resumeC = (await env.api(user.token).upload('/api/resumes').field('label', 'Temporary').field('make_default', 'true').attach('file', pdfC, 'Temp.pdf').expect(201)).body as { id: string };
+    const rec = await newRecruiter('lock-order@northwind-labs.dev');
+    const draft = await newDraft(rec.id, { resume_id: resumeC.id });
+    // Another transaction behaves like a send: message row first, then the user's settings row.
+    const sender = new pg.Client({ connectionString: env.dbUrl });
+    await sender.connect();
+    try {
+      await sender.query('BEGIN');
+      await sender.query(`SELECT 1 FROM email_messages WHERE id = $1 FOR UPDATE`, [draft.id]);
+      const deleting = env.api(user.token).del(`/api/resumes/${resumeC.id}`).then((r) => r);
+      await new Promise((r) => setTimeout(r, 300));
+      await sender.query(`SELECT 1 FROM user_settings WHERE user_id = $1 FOR UPDATE`, [user.id]);
+      await sender.query('COMMIT');
+      expect((await deleting).status).toBe(204);
+    } finally {
+      await sender.end();
+    }
+    const m = (await env.api(user.token).get(`/api/messages/${draft.id}`).expect(200)).body;
+    expect(m.resume_id).toBeNull();
+    await env.api(user.token).patch(`/api/resumes/${resumeA.id}`, { is_default: true }).expect(200);
   });
 
   it('serves other users’ queues while one user is waiting on spacing', async () => {
