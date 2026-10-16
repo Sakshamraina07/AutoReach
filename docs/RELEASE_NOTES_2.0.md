@@ -107,3 +107,9 @@ Supabase, Railway or Gmail accounts.
   are matched only when "Also notice replies that start a new thread" is on.
 * The extension's sign-in requires adding its `chromiumapp.org` redirect to Supabase; an
   unpacked extension's ID depends on the folder it was loaded from.
+* Sign-in and connecting Gmail from the extension run in its service worker while Google's
+  window is open. If Chrome suspends the worker during a very long pause on Google's screen,
+  the result is lost and you start again.
+* The send queue looks at up to 100 users' next emails per run (every 15 seconds). That is far
+  more than a personal deployment needs; a large multi-user deployment with many users at
+  their daily limit would need a smarter queue.
