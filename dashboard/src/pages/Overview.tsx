@@ -130,11 +130,10 @@ export default function Overview() {
                 <thead>
                   <tr>
                     <th>Recruiter</th>
-                    <th>Role</th>
-                    <th className="hidden md:table-cell">Subject</th>
+                    <th>Role and subject</th>
                     <th>Sent</th>
                     <th>Status</th>
-                    <th className="hidden lg:table-cell">Next follow-up</th>
+                    <th className="hidden sm:table-cell">Next follow-up</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -144,9 +143,9 @@ export default function Overview() {
                         <div className="truncate text-ink">{m.recruiter_name ?? m.recipient_email}</div>
                         <div className="truncate text-2xs text-faint">{m.company ?? '—'}</div>
                       </td>
-                      <td className="max-w-[160px] truncate text-muted">{m.role_label ?? '—'}</td>
-                      <td className="hidden max-w-[240px] truncate text-muted md:table-cell">
-                        <Link to={`/outreach/${m.id}`} onClick={(e) => e.stopPropagation()} className="text-muted hover:text-ink">
+                      <td className="max-w-[260px]">
+                        <div className="truncate text-muted">{m.role_label ?? '—'}</div>
+                        <Link to={`/outreach/${m.id}`} onClick={(e) => e.stopPropagation()} className="block truncate text-2xs text-faint hover:text-ink">
                           {m.subject || '(no subject)'}
                         </Link>
                       </td>
@@ -154,7 +153,7 @@ export default function Overview() {
                       <td className="whitespace-nowrap">
                         <StatusTrack m={m} />
                       </td>
-                      <td className="num hidden whitespace-nowrap text-muted lg:table-cell">{m.next_follow_up_at ? fmtShortDate(m.next_follow_up_at) : '—'}</td>
+                      <td className="num hidden whitespace-nowrap text-muted sm:table-cell">{m.next_follow_up_at ? fmtShortDate(m.next_follow_up_at) : '—'}</td>
                     </tr>
                   ))}
                 </tbody>

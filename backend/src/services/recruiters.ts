@@ -65,8 +65,10 @@ export async function listRecruiters(tx: Tx, userId: string, q: RecruiterListQue
       `%${q.role.replace(/[%_\\]/g, '\\$&')}%`,
     );
   }
-  if (q.added_from) add('r.created_at >= $?::date', q.added_from);
-  if (q.added_to) add(`r.created_at < ($?::date + interval '1 day')`, q.added_to);
+  // Calendar days in the user's own time zone.
+  const localDay = `(r.created_at AT TIME ZONE coalesce((SELECT s.timezone FROM user_settings s WHERE s.user_id = r.user_id), 'UTC'))::date`;
+  if (q.added_from) add(`${localDay} >= $?::date`, q.added_from);
+  if (q.added_to) add(`${localDay} <= $?::date`, q.added_to);
 
   const total = await tx.one<{ n: number }>(`SELECT count(*)::int AS n FROM recruiters r WHERE ${where.join(' AND ')}`, params);
   params.push(q.page_size, (q.page - 1) * q.page_size);

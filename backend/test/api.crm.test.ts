@@ -99,6 +99,20 @@ describe('recruiter CRM', () => {
     expect(sorted.body.items.map((x: { full_name: string }) => x.full_name)).toEqual(['Meera Iyer', 'Ravi Menon']);
     const bad = await env.api(alice.token).get('/api/recruiters?sort=drop_table');
     expect(bad.status).toBe(400);
+
+    // Role filter matches the recruiter's target role.
+    await env.api(alice.token).patch(`/api/recruiters/${meera.id}`, { target_role: 'Frontend Developer Intern' }).expect(200);
+    const byRole = await env.api(alice.token).get('/api/recruiters?role=frontend').expect(200);
+    expect(byRole.body.items.map((x: { id: string }) => x.id)).toEqual([meera.id]);
+
+    // Date-added filter uses the user's own calendar day: 23:30 UTC is already the next day in India.
+    await env.api(alice.token).patch('/api/settings', { timezone: 'Asia/Kolkata' }).expect(200);
+    await env.sql(`UPDATE recruiters SET created_at = '2026-03-10T23:30:00Z' WHERE id = $1`, [meera.id]);
+    const onLocalDay = await env.api(alice.token).get('/api/recruiters?added_from=2026-03-11&added_to=2026-03-11').expect(200);
+    expect(onLocalDay.body.items.map((x: { id: string }) => x.id)).toEqual([meera.id]);
+    const dayBefore = await env.api(alice.token).get('/api/recruiters?added_from=2026-03-10&added_to=2026-03-10').expect(200);
+    expect(dayBefore.body.total).toBe(0);
+    await env.api(alice.token).patch('/api/settings', { timezone: 'UTC' }).expect(200);
   });
 
   it('isolates users: another user cannot read, edit or delete', async () => {

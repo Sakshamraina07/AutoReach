@@ -212,8 +212,8 @@ function Home({ auth, onView, onSignedOut }: { auth: AuthState; onView: (v: View
             <Button variant="primary" icon={<PenSquare className="h-4 w-4" />} onClick={() => openComposer()}>
               Write email
             </Button>
-            <Button icon={<FilePlus2 className="h-4 w-4" />} onClick={() => onView('capture')}>
-              Save this page
+            <Button icon={<FilePlus2 className="h-4 w-4" />} onClick={() => onView('capture')} title="Filled from the page you're on when it publishes job details">
+              Add opportunity
             </Button>
             <Button icon={<UserPlus className="h-4 w-4" />} onClick={() => onView('recruiter')}>
               Add recruiter

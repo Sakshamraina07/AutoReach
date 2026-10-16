@@ -45,8 +45,13 @@ export default function Recruiters() {
   const source = params.get('source') ?? '';
   const tag = params.get('tag') ?? '';
   const sort = params.get('sort') ?? 'created_desc';
+  const role = params.get('role') ?? '';
+  const addedFrom = params.get('added_from') ?? '';
+  const addedTo = params.get('added_to') ?? '';
+  const [roleInput, setRoleInput] = useState(role);
+  const debouncedRole = useDebounced(roleInput);
   const openId = params.get('open');
-  const list = useRecruiters({ q, status, source, tag, sort, page, page_size: 25 });
+  const list = useRecruiters({ q, status, source, tag, sort, page, page_size: 25, role: debouncedRole.trim() || undefined, added_from: addedFrom || undefined, added_to: addedTo || undefined });
   const dups = useDuplicates();
   const [adding, setAdding] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -124,6 +129,22 @@ export default function Recruiters() {
             ))}
           </select>
           <input aria-label="Tag" className="field w-32" placeholder="Tag" value={tag} onChange={(e) => setParam('tag', e.target.value.trim())} />
+          <input
+            aria-label="Role"
+            className="field w-40"
+            placeholder="Role"
+            value={roleInput}
+            onChange={(e) => {
+              setRoleInput(e.target.value);
+              setPage(1);
+            }}
+          />
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            Added
+            <input aria-label="Added from" type="date" className="field w-auto" value={addedFrom} max={addedTo || undefined} onChange={(e) => setParam('added_from', e.target.value)} />
+            <span>to</span>
+            <input aria-label="Added to" type="date" className="field w-auto" value={addedTo} min={addedFrom || undefined} onChange={(e) => setParam('added_to', e.target.value)} />
+          </label>
           <select aria-label="Sort" className="field w-auto" value={sort} onChange={(e) => setParam('sort', e.target.value)}>
             <option value="created_desc">Recently added</option>
             <option value="recent_contact">Recently contacted</option>

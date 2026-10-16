@@ -63,6 +63,11 @@ export function RecruiterFields({ value, onChange, showOpportunity = true }: { v
       <Field label="Work email" htmlFor="r-email">
         <input id="r-email" type="email" required className="field" value={value.email} onChange={(e) => set('email', e.target.value)} placeholder="meera@company.com" />
       </Field>
+      {!value.email && value.full_name.trim().split(/\s+/).length >= 2 && (
+        <div className="sm:col-span-2">
+          <AddressSuggestions name={value.full_name} company={value.company} website={value.company_website} onPick={(email) => onChange({ ...value, email, unverified: true })} />
+        </div>
+      )}
       <Field label="Company" htmlFor="r-company">
         <input id="r-company" className="field" value={value.company} onChange={(e) => set('company', e.target.value)} />
       </Field>
@@ -93,7 +98,7 @@ export function RecruiterFields({ value, onChange, showOpportunity = true }: { v
             <option value="">None</option>
             {opps.data?.items.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.title} — {o.company}
+                {o.title} at {o.company}
               </option>
             ))}
           </select>
@@ -193,5 +198,107 @@ export function AddRecruiterDialog({ onClose, initial, onCreated }: { onClose: (
         <RecruiterFields value={value} onChange={setValue} />
       </form>
     </Dialog>
+  );
+}
+
+interface Suggestion {
+  email: string;
+  source: string;
+  confidence: number | null;
+  source_url: string | null;
+  note: string;
+}
+
+function domainOf(website: string): string {
+  try {
+    return new URL(website.includes('://') ? website : `https://${website}`).hostname.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Optional help when you only know a name and company. Every suggestion is
+ * labelled unverified and choosing one marks the recruiter as unconfirmed,
+ * so AutoReach asks you to check the address before anything is sent.
+ */
+function AddressSuggestions({ name, company, website, onPick }: { name: string; company: string; website: string; onPick: (email: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [domain, setDomain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [result, setResult] = useState<{ suggestions: Suggestion[]; disclaimer: string } | null>(null);
+  const effectiveDomain = domain || domainOf(website);
+
+  if (!open) {
+    return (
+      <button type="button" className="text-xs text-accent hover:underline" onClick={() => setOpen(true)}>
+        Don't have their address? See possible addresses
+      </button>
+    );
+  }
+  return (
+    <div className="rounded border border-line bg-bg p-3 text-sm">
+      <p className="mb-2 text-xs text-muted">
+        Suggestions are guesses or third-party lookups, never verified addresses. Prefer an address the person published or gave you.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-[200px] flex-1">
+          <label className="label" htmlFor="r-domain">
+            Company email domain
+          </label>
+          <input id="r-domain" className="field" placeholder="company.com" value={effectiveDomain} onChange={(e) => setDomain(e.target.value.trim())} />
+        </div>
+        <Button
+          loading={busy}
+          disabled={!effectiveDomain && !company}
+          onClick={async () => {
+            setBusy(true);
+            setError(null);
+            try {
+              setResult(
+                await api('/api/discovery/email-suggestions', {
+                  method: 'POST',
+                  body: { full_name: name.trim(), company: company.trim() || undefined, domain: effectiveDomain || undefined },
+                }),
+              );
+            } catch (e) {
+              setError(e);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Suggest
+        </Button>
+      </div>
+      {error ? (
+        <div className="mt-2">
+          <ErrorState error={error} />
+        </div>
+      ) : null}
+      {result && (
+        <div className="mt-3 space-y-1.5">
+          {result.suggestions.length === 0 ? (
+            <p className="text-xs text-muted">No suggestions. Add the company's email domain to see common address patterns.</p>
+          ) : (
+            result.suggestions.map((s) => (
+              <div key={s.email} className="flex flex-wrap items-center gap-2">
+                <code className="text-xs text-ink">{s.email}</code>
+                <span className="text-2xs text-warn">unverified</span>
+                <span className="text-2xs text-faint">
+                  {s.source}
+                  {s.confidence !== null ? `, confidence ${s.confidence}/100` : ''}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => onPick(s.email)}>
+                  Use as unconfirmed
+                </Button>
+              </div>
+            ))
+          )}
+          <p className="text-2xs text-faint">{result.disclaimer}</p>
+        </div>
+      )}
+    </div>
   );
 }

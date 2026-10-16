@@ -18,7 +18,7 @@ const TYPE_LABEL: Record<(typeof EMPLOYMENT_TYPES)[number], string> = {
   unknown: 'Not stated',
 };
 
-/** "Save this page": the user reviews every field before anything is stored. */
+/** Quick-add an opportunity, prefilled from the current page; the user reviews every field before anything is stored. */
 export function CaptureView({ onDone }: { onDone: () => void }) {
   const [page, setPage] = useState<CapturedPage | null>(null);
   const [captureError, setCaptureError] = useState<unknown>(null);
@@ -141,10 +141,10 @@ export function CaptureView({ onDone }: { onDone: () => void }) {
         <button type="button" aria-label="Back" onClick={onDone} className="rounded p-1 text-muted hover:bg-raised hover:text-ink">
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <h1 className="text-sm font-semibold">Save this page as an opportunity</h1>
+        <h1 className="text-sm font-semibold">Add an opportunity</h1>
       </header>
       <div className="space-y-3 p-3">
-        {!page && !captureError && <Spinner label="Reading the page" />}
+        {!page && !captureError && <Spinner label="Reading this page" />}
         {captureError ? <ErrorNote error={captureError} /> : null}
         {page && (
           <p className="text-2xs text-faint">

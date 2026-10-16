@@ -45,7 +45,10 @@ describe('assist card content', () => {
     const results: RecruiterLookupResult[] = [{ email: 'meera.iyer@contoso.example', recruiter: rec(), messages: [msg()] }];
     expect(assistItems(results, true)[0]!.duplicateWarning).toBe("You've emailed Meera once already.");
     expect(assistItems(results, false)[0]!.duplicateWarning).toBeNull();
-    expect(assistItems(results, false)[0]!.detail).toMatch(/^Emailed .*no reply yet$/);
+    expect(assistItems(results, false)[0]!.detail).toMatch(/^Emailed .*, no reply yet$/);
+    const opened = assistItems([{ email: 'meera.iyer@contoso.example', recruiter: rec(), messages: [msg({ first_open_at: '2026-10-02T09:00:00Z' })] }], false)[0]!;
+    expect(opened.detail).toMatch(/open detected, no reply yet$/);
+    expect(opened.detail).not.toMatch(/read/i);
   });
 
   it('shows replies, bounces and do-not-contact distinctly', () => {

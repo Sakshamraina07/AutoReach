@@ -72,7 +72,8 @@ function lastOutcome(messages: MessageSummary[]): string {
   if (last.reply_status === 'replied') return `Replied ${fmt(last.replied_at)}`;
   if (last.reply_status === 'bounced') return `Last email bounced (${fmt(last.sent_at)})`;
   if (last.reply_status === 'auto_reply') return `Automatic reply only (${fmt(last.sent_at)})`;
-  return `Emailed ${fmt(last.sent_at)}, no reply yet`;
+  // An open is only a signal (image proxies and scanners load images too), so it's worded as such.
+  return last.first_open_at ? `Emailed ${fmt(last.sent_at)}, open detected, no reply yet` : `Emailed ${fmt(last.sent_at)}, no reply yet`;
 }
 
 /** What to show for each address, from /api/recruiters/lookup. */

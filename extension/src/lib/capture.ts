@@ -1,5 +1,5 @@
 /**
- * One-shot page reader for "Save this page".
+ * One-shot page reader for "Add opportunity" in the popup.
  *
  * `readPage` is injected with chrome.scripting.executeScript only after the
  * user clicks, using the activeTab grant. It must stay self-contained (no

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/config.js';
+import type { Deps } from '../src/context.js';
 import { decryptSecret, encryptSecret, pkceChallenge } from '../src/lib/crypto.js';
 import { parseJsonObject } from '../src/services/ai/provider.js';
 import { buildMime, encodeHeaderWords, formatAddress, textToHtml } from '../src/services/gmail/mime.js';
@@ -148,5 +149,49 @@ describe('configuration', () => {
     expect(c3.ai.provider).toBe('anthropic');
     expect(c3.tracking.configured).toBe(true);
     expect(c3.apiPublicUrl).toBe('https://api.example.dev');
+  });
+});
+
+describe('contact discovery suggestions', () => {
+  const baseDeps = (over: Record<string, unknown> = {}) =>
+    ({
+      config: { hunterApiKey: undefined },
+      logger: { warn: () => undefined },
+      fetch: async () => {
+        throw new Error('network not expected');
+      },
+      ...over,
+    }) as unknown as Deps;
+
+  it('labels every pattern guess unverified and never claims verification', async () => {
+    const { suggestEmails } = await import('../src/services/discovery.js');
+    const r = await suggestEmails(baseDeps(), { full_name: 'Meera Iyer', domain: 'Contoso.example' });
+    expect(r.suggestions.map((s) => s.email)).toEqual(['meera.iyer@contoso.example', 'meeraiyer@contoso.example', 'miyer@contoso.example', 'meera@contoso.example']);
+    expect(r.suggestions.every((s) => s.verification === 'unverified_guess' && s.source === 'Common address pattern')).toBe(true);
+    expect(r.disclaimer).toMatch(/not verified/);
+  });
+
+  it('uses Hunter.io when configured, keeps its source and still marks it unverified', async () => {
+    const { suggestEmails } = await import('../src/services/discovery.js');
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    const deps = baseDeps({
+      config: { hunterApiKey: 'hk_test' },
+      fetch: async (url: string, init: RequestInit) => {
+        calls.push({ url, headers: init.headers as Record<string, string> });
+        return new Response(JSON.stringify({ data: { email: 'Meera.Iyer@contoso.example', score: 91, sources: [{ uri: 'https://contoso.example/team' }] } }), { status: 200 });
+      },
+    });
+    const r = await suggestEmails(deps, { full_name: 'Meera Iyer', domain: 'contoso.example' });
+    expect(calls[0]!.url).toContain('https://api.hunter.io/v2/email-finder?first_name=Meera&last_name=Iyer&domain=contoso.example');
+    expect(calls[0]!.headers['X-API-KEY']).toBe('hk_test');
+    expect(r.suggestions[0]).toMatchObject({ email: 'meera.iyer@contoso.example', source: 'Hunter.io email finder', confidence: 91, source_url: 'https://contoso.example/team', verification: 'unverified_guess' });
+    expect(r.suggestions.filter((s) => s.email === 'meera.iyer@contoso.example')).toHaveLength(1); // no duplicate pattern
+  });
+
+  it('degrades to patterns when the lookup service fails', async () => {
+    const { suggestEmails } = await import('../src/services/discovery.js');
+    const deps = baseDeps({ config: { hunterApiKey: 'hk_test' }, fetch: async () => new Response('{"errors":[]}', { status: 429 }) });
+    const r = await suggestEmails(deps, { full_name: 'Meera Iyer', domain: 'contoso.example' });
+    expect(r.suggestions.every((s) => s.source === 'Common address pattern')).toBe(true);
   });
 });
