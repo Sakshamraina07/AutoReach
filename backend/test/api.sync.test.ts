@@ -170,6 +170,72 @@ describe('reply sync', () => {
     expect(m.reply_status).toBe('replied');
   });
 
+  it('skips messages that were deleted before the sync instead of getting stuck', async () => {
+    const { message } = await sendTo('deleted-draft@fabrikam-hr.dev', 'Draft Case', 'Fabrikam');
+    await sync();
+    // The user started a reply in Gmail (a draft autosave) that Gmail then replaced: the history
+    // still lists it, but fetching it returns 404.
+    const draft = env.google.deliverInbound({ threadId: message.gmail_thread_id, labelIds: ['DRAFT'], headers: { From: env.google.accountEmail, Subject: 'Re: x' } });
+    env.google.messages.delete(draft.id);
+    env.google.deliverInbound({
+      threadId: message.gmail_thread_id,
+      headers: { From: 'deleted-draft@fabrikam-hr.dev', Subject: 'Re: Frontend Developer Intern' },
+      at: new Date(Date.now() + 60_000),
+    });
+    expect(await sync()).toMatchObject({ status: 'ok', replies: 1 });
+    expect((await env.api(user.token).get(`/api/messages/${message.id}`).expect(200)).body.reply_status).toBe('replied');
+  });
+
+  it('treats a delivery-delay notice as information, not a bounce', async () => {
+    const { rec, message } = await sendTo('slow-server@fabrikam-hr.dev', 'Slow Server', 'Fabrikam');
+    await sync();
+    env.google.deliverInbound({
+      threadId: message.gmail_thread_id,
+      headers: { From: 'Mail Delivery Subsystem <mailer-daemon@googlemail.com>', Subject: 'Delivery Status Notification (Delay)', 'Content-Type': 'multipart/report; report-type=delivery-status; boundary="b"' },
+      at: new Date(Date.now() + 60_000),
+    });
+    await sync();
+    expect((await env.api(user.token).get(`/api/messages/${message.id}`).expect(200)).body.reply_status).toBe('none');
+    const r = (await env.api(user.token).get(`/api/recruiters/${rec.id}`).expect(200)).body;
+    expect(r.outreach_status).toBe('contacted');
+    expect(r.follow_ups[0].status).toBe('pending');
+  });
+
+  it('recognises an out-of-office that starts a new thread (opt-in new-thread scanning)', async () => {
+    const { rec } = await sendTo('newthread-ooo@fabrikam-hr.dev', 'Away New', 'Fabrikam');
+    await env.api(user.token).patch('/api/settings', { reply_scan_new_threads: true }).expect(200);
+    try {
+      await sync();
+      env.google.deliverInbound({
+        threadId: 'brand-new-thread-ooo',
+        headers: { From: 'newthread-ooo@fabrikam-hr.dev', Subject: 'Away until Monday', 'Auto-Submitted': 'auto-replied' },
+        at: new Date(Date.now() + 60_000),
+      });
+      expect(await sync()).toMatchObject({ status: 'ok', replies: 0 });
+      const r = (await env.api(user.token).get(`/api/recruiters/${rec.id}`).expect(200)).body;
+      expect(r.outreach_status).toBe('contacted');
+      expect(r.follow_ups[0].status).toBe('pending');
+    } finally {
+      await env.api(user.token).patch('/api/settings', { reply_scan_new_threads: false }).expect(200);
+    }
+  });
+
+  it('resumes from where it stopped when a run hits its message limit', async () => {
+    const { message } = await sendTo('many@fabrikam-hr.dev', 'Many Messages', 'Fabrikam');
+    await sync();
+    const before = (await env.sql<{ history_id: string }>(`SELECT history_id FROM oauth_connections WHERE user_id = $1`, [user.id]))[0]!.history_id;
+    // 301 messages in the tracked thread; the last one is the recruiter's reply.
+    for (let i = 0; i < 300; i++) env.google.deliverInbound({ threadId: message.gmail_thread_id, headers: { From: 'colleague@other-company.dev', Subject: `note ${i}` } });
+    env.google.deliverInbound({ threadId: message.gmail_thread_id, headers: { From: 'many@fabrikam-hr.dev', Subject: 'Re: Frontend Developer Intern' }, at: new Date(Date.now() + 60_000) });
+    const first = await sync();
+    expect(first.replies).toBe(0);
+    const mid = (await env.sql<{ history_id: string }>(`SELECT history_id FROM oauth_connections WHERE user_id = $1`, [user.id]))[0]!.history_id;
+    expect(Number(mid)).toBe(Number(before) + 300); // stopped after 300 records, not at the mailbox's latest id
+    const second = await sync();
+    expect(second.replies).toBe(1);
+    expect((await env.api(user.token).get(`/api/messages/${message.id}`).expect(200)).body.reply_status).toBe('replied');
+  });
+
   it('skips reply detection (without failing) when the metadata scope was not granted', async () => {
     const u = await env.newUser('sendonly@student-mail.dev');
     await env.connectGmail(u.id, { scopes: ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/userinfo.email'] });
@@ -264,8 +330,12 @@ describe('follow-ups', () => {
 });
 
 describe('Gmail OAuth connection', () => {
-  it('builds a consent URL with minimal scopes, PKCE and single-use state; stores tokens encrypted', async () => {
+  const request = async () => (await import('supertest')).default(env.app);
+  const callback = async (q: string) => (await request()).get(`/api/integrations/gmail/callback?${q}`);
+
+  it('builds a consent URL with minimal scopes, PKCE and single-use state; completes only for the user who started it', async () => {
     const u = await env.newUser('connect@student-mail.dev');
+    const other = await env.newUser('someone-else@student-mail.dev');
     const auth = (await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'dashboard' }).expect(200)).body;
     const url = new URL(auth.url);
     expect(url.host).toBe('accounts.google.com');
@@ -273,24 +343,59 @@ describe('Gmail OAuth connection', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('redirect_uri')).toBe('https://api.autoreach.test/api/integrations/gmail/callback');
     const state = url.searchParams.get('state')!;
-    env.google.tokenResponses.push({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, scope: 'openid https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata https://www.googleapis.com/auth/userinfo.email' });
-    const request = (await import('supertest')).default;
-    const cb = await request(env.app).get(`/api/integrations/gmail/callback?code=abc&state=${encodeURIComponent(state)}`);
+    const tokenCalls = () => env.google.requests.filter((r) => r.url.includes('/token')).length;
+    const tokenCallsBefore = tokenCalls();
+
+    // Google's redirect only hands the code back to the dashboard; nothing is exchanged yet.
+    const cb = await callback(`code=abc&state=${encodeURIComponent(state)}`);
     expect(cb.status).toBe(303);
-    expect(cb.headers.location).toBe('https://app.autoreach.test/settings?section=gmail&gmail=connected');
+    const back = new URL(cb.headers.location!);
+    expect(`${back.origin}${back.pathname}`).toBe('https://app.autoreach.test/gmail/callback');
+    expect(back.searchParams.get('gmail_code')).toBe('abc');
+    expect(back.searchParams.get('state')).toBe(state);
+    expect(back.searchParams.get('return_to')).toBe('dashboard');
+    expect(tokenCalls()).toBe(tokenCallsBefore);
+
+    // A consent link forwarded to someone else can't attach their Gmail to this account.
+    const hijack = await env.api(other.token).post('/api/integrations/gmail/complete', { code: 'abc', state });
+    expect(hijack.status).toBe(400);
+    expect(hijack.body.error.code).toBe('OAUTH_STATE_INVALID');
+    expect(await env.sql(`SELECT 1 FROM oauth_connections WHERE user_id IN ($1, $2)`, [u.id, other.id])).toHaveLength(0);
+
+    env.google.tokenResponses.push({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, scope: 'openid https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata https://www.googleapis.com/auth/userinfo.email' });
+    const done = (await env.api(u.token).post('/api/integrations/gmail/complete', { code: 'abc', state }).expect(200)).body;
+    expect(done).toEqual({ email: env.google.accountEmail, return_to: 'dashboard' });
     const [row] = await env.sql<{ access_token_enc: string; refresh_token_enc: string; scopes: string[]; account_email: string }>(`SELECT * FROM oauth_connections WHERE user_id = $1`, [u.id]);
     expect(row!.account_email).toBe(env.google.accountEmail);
     expect(row!.refresh_token_enc).toMatch(/^v1:/);
     expect(JSON.stringify(row)).not.toContain('new-refresh');
     expect(JSON.stringify(row)).not.toContain('new-access');
     // State cannot be replayed.
-    const replay = await request(env.app).get(`/api/integrations/gmail/callback?code=abc&state=${encodeURIComponent(state)}`);
+    const replay = await env.api(u.token).post('/api/integrations/gmail/complete', { code: 'abc', state });
     expect(replay.status).toBe(400);
-    expect(replay.text).toContain('expired or was already used');
+    expect((await callback(`code=abc&state=${encodeURIComponent(state)}`)).status).toBe(400);
     // Disconnect revokes at Google and removes tokens.
     await env.api(u.token).del('/api/integrations/gmail').expect(204);
     expect(env.google.revoked).toContain('new-refresh');
     expect(await env.sql(`SELECT 1 FROM oauth_connections WHERE user_id = $1`, [u.id])).toHaveLength(0);
+  });
+
+  it('hands the result back to the extension through its chrome.identity redirect', async () => {
+    const u = await env.newUser('ext-connect@student-mail.dev');
+    const redirect = 'https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/gmail';
+    await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'extension' }).expect(400);
+    await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'extension', extension_redirect: 'https://evil.example/steal' }).expect(400);
+    const auth = (await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'extension', extension_redirect: redirect }).expect(200)).body;
+    const state = new URL(auth.url).searchParams.get('state')!;
+    const cb = await callback(`code=xyz&state=${encodeURIComponent(state)}`);
+    expect(cb.status).toBe(303);
+    expect(cb.headers.location).toBe(`${redirect}?gmail_code=xyz&state=${encodeURIComponent(state)}`);
+    // Declined consent is passed back too, without a code.
+    const auth2 = (await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'extension', extension_redirect: redirect }).expect(200)).body;
+    const state2 = new URL(auth2.url).searchParams.get('state')!;
+    const denied = await callback(`error=access_denied&state=${encodeURIComponent(state2)}`);
+    expect(new URL(denied.headers.location!).searchParams.get('gmail_error')).toBe('access_denied');
+    expect(new URL(denied.headers.location!).searchParams.get('gmail_code')).toBeNull();
   });
 
   it('can be set up to send only, without the restricted header permission', async () => {
@@ -313,10 +418,9 @@ describe('Gmail OAuth connection', () => {
     const auth = (await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'onboarding' }).expect(200)).body;
     const state = new URL(auth.url).searchParams.get('state')!;
     env.google.tokenResponses.push({ access_token: 'a2', refresh_token: 'r2', expires_in: 3600, scope: 'openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata' });
-    const request = (await import('supertest')).default;
-    const cb = await request(env.app).get(`/api/integrations/gmail/callback?code=abc&state=${encodeURIComponent(state)}`);
-    expect(cb.status).toBe(303);
-    expect(cb.headers.location).toBe('https://app.autoreach.test/onboarding?gmail=connected');
+    expect((await callback(`code=abc&state=${encodeURIComponent(state)}`)).status).toBe(303);
+    const done = (await env.api(u.token).post('/api/integrations/gmail/complete', { code: 'abc', state }).expect(200)).body;
+    expect(done.return_to).toBe('onboarding');
     await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'elsewhere' }).expect(400);
   });
 
@@ -325,10 +429,10 @@ describe('Gmail OAuth connection', () => {
     const auth = (await env.api(u.token).post('/api/integrations/gmail/authorize', {}).expect(200)).body;
     const state = new URL(auth.url).searchParams.get('state')!;
     env.google.tokenResponses.push({ access_token: 'a', refresh_token: 'r', expires_in: 3600, scope: 'openid email https://www.googleapis.com/auth/gmail.metadata' });
-    const request = (await import('supertest')).default;
-    const cb = await request(env.app).get(`/api/integrations/gmail/callback?code=abc&state=${encodeURIComponent(state)}`);
-    expect(cb.status).toBe(400);
-    expect(cb.text).toContain('did not grant permission to send');
+    const res = await env.api(u.token).post('/api/integrations/gmail/complete', { code: 'abc', state });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('GMAIL_SEND_SCOPE_DECLINED');
+    expect(res.body.error.message).toContain('did not grant permission to send');
     expect(await env.sql(`SELECT 1 FROM oauth_connections WHERE user_id = $1`, [u.id])).toHaveLength(0);
   });
 

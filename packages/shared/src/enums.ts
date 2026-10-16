@@ -167,6 +167,7 @@ export const ACTIVITY_TYPES = [
   'reply_received',
   'auto_reply_received',
   'bounce_detected',
+  'delivery_delayed',
   'reply_needs_review',
   'followup_scheduled',
   'followup_completed',

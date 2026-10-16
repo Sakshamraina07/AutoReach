@@ -129,26 +129,37 @@ create table if not exists public.resumes (
 );
 create unique index if not exists resumes_one_default_per_user on public.resumes (user_id) where is_default;
 
-insert into public.resumes (user_id, label, file_name, storage_path, mime_type, is_default, legacy)
-select
-  u.id,
-  'Résumé (from AutoReach v1)',
-  case
-    when lower(substring(u.raw_user_meta_data ->> 'resume_url' from '\.([A-Za-z0-9]+)(\?.*)?$')) = 'pdf' then 'Resume.pdf'
-    else 'Resume.' || coalesce(lower(substring(u.raw_user_meta_data ->> 'resume_url' from '\.([A-Za-z0-9]+)(\?.*)?$')), 'pdf')
-  end,
-  substring(u.raw_user_meta_data ->> 'resume_url' from '/storage/v1/object/public/resumes/([^?#]+)'),
-  case lower(coalesce(substring(u.raw_user_meta_data ->> 'resume_url' from '\.([A-Za-z0-9]+)(\?.*)?$'), 'pdf'))
-    when 'pdf' then 'application/pdf'
-    when 'docx' then 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    when 'doc' then 'application/msword'
-    else 'application/octet-stream'
-  end,
-  not exists (select 1 from public.resumes r where r.user_id = u.id and r.is_default),
-  true
-from auth.users u
-where substring(u.raw_user_meta_data ->> 'resume_url' from '/storage/v1/object/public/resumes/([^?#]+)') is not null
-on conflict (user_id, storage_path) do nothing;
+-- Only on the first run (user_settings is created further down by this file), so a
+-- re-run never brings back a v1 résumé the user has since deleted.
+do $$
+begin
+  if to_regclass('public.user_settings') is null then
+    insert into public.resumes (user_id, label, file_name, storage_path, mime_type, is_default, legacy)
+    select
+      u.id,
+      'Résumé (from AutoReach v1)',
+      case
+        when lower(substring(u.raw_user_meta_data ->> 'resume_url' from '\.([A-Za-z0-9]+)(\?.*)?$')) = 'pdf' then 'Resume.pdf'
+        else 'Resume.' || coalesce(lower(substring(u.raw_user_meta_data ->> 'resume_url' from '\.([A-Za-z0-9]+)(\?.*)?$')), 'pdf')
+      end,
+      substring(u.raw_user_meta_data ->> 'resume_url' from '/storage/v1/object/public/resumes/([^?#]+)'),
+      case lower(coalesce(substring(u.raw_user_meta_data ->> 'resume_url' from '\.([A-Za-z0-9]+)(\?.*)?$'), 'pdf'))
+        when 'pdf' then 'application/pdf'
+        when 'docx' then 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        when 'doc' then 'application/msword'
+        else 'application/octet-stream'
+      end,
+      not exists (select 1 from public.resumes r where r.user_id = u.id and r.is_default),
+      true
+    from auth.users u
+    where substring(u.raw_user_meta_data ->> 'resume_url' from '/storage/v1/object/public/resumes/([^?#]+)') is not null
+      -- v1 named uploads `${userId}-${timestamp}.${ext}`. user_metadata is editable by the user,
+      -- so a URL pointing at anyone else's object (or a nested path) is ignored.
+      and substring(u.raw_user_meta_data ->> 'resume_url' from '/storage/v1/object/public/resumes/([^?#]+)') ~ ('^' || u.id::text || '-[A-Za-z0-9._-]+$')
+    on conflict (user_id, storage_path) do nothing;
+  end if;
+end
+$$;
 
 -- ---------------------------------------------------------------------
 -- 3. Settings
@@ -244,36 +255,9 @@ alter table public.recruiters add column if not exists self_view_until timestamp
 alter table public.recruiters add column if not exists updated_at timestamptz not null default now();
 alter table public.recruiters alter column source set default 'manual';
 
--- Map v1 rows exactly once (rows not yet normalised are v1 rows).
-update public.recruiters
-set
-  email = btrim(email),
-  email_normalized = lower(btrim(email)),
-  outreach_status = case when legacy_status::text = 'Sent' then 'contacted' else 'new' end,
-  last_contacted_at = coalesce(last_contacted_at, case when legacy_status::text = 'Sent' then last_sent_at end),
-  source = case
-    when source is null or btrim(source) = '' then 'legacy'
-    when source in ('manual', 'csv', 'browser_capture', 'company_site', 'linkedin', 'referral', 'legacy', 'other') then source
-    else 'other'
-  end
-where email_normalized is null;
-
--- Case-variant duplicates (v1's unique key was case-sensitive): keep the oldest
--- row, mark the others as merged into it. No rows are deleted.
-with ranked as (
-  select
-    id,
-    first_value(id) over (partition by user_id, email_normalized order by created_at, id) as keeper
-  from public.recruiters
-  where merged_into_id is null
-)
-update public.recruiters r
-set merged_into_id = ranked.keeper
-from ranked
-where r.id = ranked.id and ranked.id <> ranked.keeper;
-
--- Drop v1's case-sensitive unique (user_id, email): superseded by the
--- normalised key below and it would block re-adding a merged address.
+-- Drop v1's case-sensitive unique (user_id, email) first: it is superseded by the
+-- normalised key below, it would block re-adding a merged address, and trimming
+-- whitespace-variant addresses (" a@x.io" next to "a@x.io") would violate it.
 do $$
 declare
   con record;
@@ -309,6 +293,35 @@ begin
   end loop;
 end
 $$;
+
+-- Map v1 rows exactly once (rows not yet normalised are v1 rows).
+update public.recruiters
+set
+  email = btrim(email),
+  email_normalized = lower(btrim(email)),
+  outreach_status = case when legacy_status::text = 'Sent' then 'contacted' else 'new' end,
+  last_contacted_at = coalesce(last_contacted_at, case when legacy_status::text = 'Sent' then last_sent_at end),
+  source = case
+    when source is null or btrim(source) = '' then 'legacy'
+    when source in ('manual', 'csv', 'browser_capture', 'company_site', 'linkedin', 'referral', 'legacy', 'other') then source
+    else 'other'
+  end
+where email_normalized is null;
+
+-- Case-variant duplicates (v1's unique key was case-sensitive): keep the oldest
+-- row, mark the others as merged into it. No rows are deleted.
+with ranked as (
+  select
+    id,
+    first_value(id) over (partition by user_id, email_normalized order by created_at, id) as keeper
+  from public.recruiters
+  where merged_into_id is null
+)
+update public.recruiters r
+set merged_into_id = ranked.keeper
+from ranked
+where r.id = ranked.id and ranked.id <> ranked.keeper;
+
 
 alter table public.recruiters alter column email_normalized set not null;
 create unique index if not exists recruiters_user_email_normalized_key
@@ -716,6 +729,7 @@ where coalesce(r.followup_count, 0) < 2
   and r.outreach_status = 'contacted'
   and l.sent_at > now() - interval '90 days'
   and l.user_id is not null
+  and not exists (select 1 from public.follow_ups fu where fu.recruiter_id = l.recruiter_id)
 on conflict (original_message_id, step) do nothing;
 
 -- ---------------------------------------------------------------------

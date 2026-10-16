@@ -70,30 +70,55 @@ export async function connectionStatus(deps: Deps, tx: Tx, userId: string): Prom
 }
 
 /** Step 1 of the OAuth flow: single-use state with a PKCE verifier. */
-export async function createAuthorization(deps: Deps, tx: Tx, userId: string, returnTo: 'dashboard' | 'onboarding' | 'extension', loginHint?: string | null) {
+export async function createAuthorization(
+  deps: Deps,
+  tx: Tx,
+  userId: string,
+  returnTo: 'dashboard' | 'onboarding' | 'extension',
+  loginHint?: string | null,
+  returnUrl?: string | null,
+) {
   const cfg = oauthConfig(deps);
   key(deps);
   const state = randomToken(32);
   const verifier = randomToken(48);
   await tx.query(`DELETE FROM oauth_states WHERE user_id = $1 AND expires_at < now()`, [userId]);
   await tx.query(
-    `INSERT INTO oauth_states (state, user_id, code_verifier, return_to, expires_at) VALUES ($1,$2,$3,$4, now() + interval '10 minutes')`,
-    [state, userId, verifier, returnTo],
+    `INSERT INTO oauth_states (state, user_id, code_verifier, return_to, return_url, expires_at) VALUES ($1,$2,$3,$4,$5, now() + interval '10 minutes')`,
+    [state, userId, verifier, returnTo, returnUrl ?? null],
   );
   return { url: buildAuthorizeUrl(cfg, state, pkceChallenge(verifier), loginHint) };
 }
 
-/** Step 2: Google redirected back. Runs without a user session; the state binds the user. */
-export async function completeAuthorization(deps: Deps, code: string, state: string): Promise<{ userId: string; returnTo: string; email: string }> {
+/**
+ * Step 2a: Google redirected back to the API. Nothing is exchanged here: we only
+ * look up where the flow started so the code can be handed to that signed-in
+ * client (dashboard or extension), which completes it in step 2b.
+ */
+export async function lookupAuthorization(deps: Deps, state: string): Promise<{ returnTo: string; returnUrl: string | null } | null> {
+  const row = await deps.db.withSystem((tx) =>
+    tx.maybeOne<{ return_to: string; return_url: string | null }>(`SELECT return_to, return_url FROM oauth_states WHERE state = $1 AND expires_at > now()`, [state]),
+  );
+  return row ? { returnTo: row.return_to, returnUrl: row.return_url } : null;
+}
+
+/**
+ * Step 2b: the signed-in user who started the flow completes it. A state created
+ * by someone else is refused, so a consent link forwarded to another person can't
+ * attach that person's Gmail to the sender's account.
+ */
+export async function completeAuthorization(deps: Deps, code: string, state: string, userId: string): Promise<{ userId: string; returnTo: string; email: string }> {
   const cfg = oauthConfig(deps);
   const k = key(deps);
   const consumed = await deps.db.withSystem((tx) =>
     tx.maybeOne<{ user_id: string; code_verifier: string; return_to: string }>(
-      `DELETE FROM oauth_states WHERE state = $1 AND expires_at > now() RETURNING user_id, code_verifier, return_to`,
-      [state],
+      `DELETE FROM oauth_states WHERE state = $1 AND user_id = $2 AND expires_at > now() RETURNING user_id, code_verifier, return_to`,
+      [state, userId],
     ),
   );
-  if (!consumed) throw badRequest('This Gmail connection link has expired or was already used. Start again from AutoReach.', undefined, 'OAUTH_STATE_INVALID');
+  if (!consumed) {
+    throw badRequest('This Gmail connection was started from a different AutoReach account, has expired, or was already used. Start again from Settings.', undefined, 'OAUTH_STATE_INVALID');
+  }
 
   const tokens = await exchangeCode(deps.fetch, cfg, code, consumed.code_verifier).catch((err: unknown) => {
     throw badRequest(`Google did not complete the connection: ${(err as Error).message}`, undefined, 'OAUTH_EXCHANGE_FAILED');

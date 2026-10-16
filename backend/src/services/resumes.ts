@@ -110,7 +110,36 @@ export async function deleteResume(tx: Tx, storage: FileStorage, userId: string,
     if (next) await tx.query(`UPDATE resumes SET is_default = true WHERE id = $1`, [next.id]);
     await tx.query(`UPDATE user_settings SET default_resume_id = $2 WHERE user_id = $1`, [userId, next?.id ?? null]);
   }
-  await storage.remove([row.storage_path]);
+  if (ownsStoragePath(userId, row.storage_path)) await storage.remove([row.storage_path]);
+}
+
+/**
+ * Storage keys a user's résumé row may point at: files uploaded through 2.0
+ * (`<userId>/<id>.pdf`) and v1 uploads (`<userId>-<timestamp>.<ext>`). v1 rows were
+ * imported from user-editable metadata, so anything else is treated as missing and
+ * never read or deleted.
+ */
+/** A send never waits on storage for longer than this (the stale-send sweeper runs at 10 minutes). */
+const STORAGE_TIMEOUT_MS = 60_000;
+
+async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(unprocessable('RESUME_STORAGE_TIMEOUT', 'The résumé file could not be loaded from storage in time. Nothing was sent; try again.')), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function ownsStoragePath(userId: string, storagePath: string): boolean {
+  if (storagePath.includes('..')) return false;
+  if (storagePath.startsWith(`${userId}/`)) return /^[A-Za-z0-9._-]+$/.test(storagePath.slice(userId.length + 1));
+  return storagePath.startsWith(`${userId}-`) && /^[A-Za-z0-9._-]+$/.test(storagePath);
 }
 
 export interface VerifiedAttachment {
@@ -134,7 +163,7 @@ export async function loadVerifiedAttachment(tx: Tx, storage: FileStorage, userI
     [userId, resumeId],
   );
   if (!row) throw unprocessable('RESUME_NOT_FOUND', 'The selected résumé no longer exists. Choose another one.');
-  const data = await storage.get(row.storage_path);
+  const data = ownsStoragePath(userId, row.storage_path) ? await withTimeout(storage.get(row.storage_path), STORAGE_TIMEOUT_MS) : null;
   if (!data) throw unprocessable('RESUME_FILE_MISSING', `The file for "${row.file_name}" is missing from storage. Upload it again.`);
   if (data.length === 0) throw unprocessable('RESUME_FILE_EMPTY', `The file for "${row.file_name}" is empty. Upload it again.`);
   if (data.length > MAX_RESUME_BYTES) throw unprocessable('RESUME_TOO_LARGE', 'The résumé is larger than 10 MB.');
@@ -166,7 +195,7 @@ export async function getResumeFile(tx: Tx, storage: FileStorage, userId: string
     [userId, id],
   );
   if (!row) throw notFound('Résumé');
-  const data = await storage.get(row.storage_path);
+  const data = ownsStoragePath(userId, row.storage_path) ? await storage.get(row.storage_path) : null;
   if (!data) throw notFound('Résumé file');
   return { ...row, data };
 }

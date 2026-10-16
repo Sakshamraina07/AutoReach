@@ -1,10 +1,10 @@
 import type { FollowUp, MeResponse, MessageSummary, Paginated } from '@autoreach/shared';
 import { Bell, ExternalLink, FilePlus2, LogOut, PauseCircle, PenSquare, PlayCircle, Settings2, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api, authCall, ExtensionApiError } from '../lib/client';
+import { api, authCall, ExtensionApiError, send } from '../lib/client';
 import { config, dashboardLink, supabaseConfigured } from '../lib/config';
 import { useLoad } from '../lib/hooks';
-import type { AuthState } from '../lib/protocol';
+import type { ApiErrorShape, AuthState } from '../lib/protocol';
 import { Button, ErrorNote, Logo, Spinner, StatusLabel } from '../ui/components';
 import { AddRecruiterView } from './AddRecruiter';
 import { CaptureView } from './Capture';
@@ -140,8 +140,10 @@ function Home({ auth, onView, onSignedOut }: { auth: AuthState; onView: (v: View
     setConnecting(true);
     setActionError(null);
     try {
-      const { url } = await api<{ url: string }>('/api/integrations/gmail/authorize', { method: 'POST', body: { return_to: 'extension' } });
-      await chrome.tabs.create({ url });
+      // The service worker runs the Google window and finishes the connection, even if this popup closes meanwhile.
+      const res = await send<{ ok: true; email: string } | { ok: false; error: ApiErrorShape }>({ type: 'gmail:connect' });
+      if (!res.ok) throw new ExtensionApiError(res.error);
+      await me.reload();
     } catch (e) {
       setActionError(e);
     } finally {

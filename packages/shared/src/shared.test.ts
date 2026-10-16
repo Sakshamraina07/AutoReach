@@ -24,6 +24,8 @@ import {
   runQualityChecks,
   settingsUpdateSchema,
   type QualityInput,
+  utcToZonedInput,
+  zonedInputToUtc,
 } from './index.js';
 
 describe('email helpers', () => {
@@ -235,5 +237,16 @@ describe('time zones', () => {
     expect(canonicalTimezone('Asia/Kolkata')).toBe('Asia/Kolkata');
     expect(canonicalTimezone('Not/AZone')).toBe('Not/AZone');
     expect(isValidTimezone(canonicalTimezone('Asia/Calcutta'))).toBe(true);
+  });
+});
+
+describe('scheduling in the user’s time zone', () => {
+  it('reads a datetime-local value as wall-clock time in the AutoReach time zone', () => {
+    expect(zonedInputToUtc('2026-10-20T09:30', 'Asia/Kolkata')).toBe('2026-10-20T04:00:00.000Z');
+    expect(zonedInputToUtc('2026-10-20T09:30', 'America/New_York')).toBe('2026-10-20T13:30:00.000Z');
+    expect(zonedInputToUtc('not a date', 'UTC')).toBeNull();
+    expect(utcToZonedInput(new Date('2026-10-20T04:00:00Z'), 'Asia/Kolkata')).toBe('2026-10-20T09:30');
+    // an unknown zone falls back to UTC rather than throwing
+    expect(utcToZonedInput(new Date('2026-10-20T04:00:00Z'), 'Mars/Base')).toBe('2026-10-20T04:00');
   });
 });

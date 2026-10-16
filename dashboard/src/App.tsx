@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { lazy, Suspense, useEffect } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Spinner } from './components/ui';
 import { configureApi } from './lib/api';
@@ -18,6 +18,7 @@ const FollowUps = lazy(() => import('./pages/FollowUps'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const SettingsPage = lazy(() => import('./pages/Settings'));
 const Onboarding = lazy(() => import('./pages/Onboarding'));
+const GmailCallback = lazy(() => import('./pages/GmailCallback'));
 
 export function App() {
   const auth = useAuth();
@@ -41,13 +42,14 @@ export function App() {
     <Suspense fallback={<div className="p-8"><Spinner /></div>}>
       <Routes>
         <Route path="/onboarding" element={<Onboarding />} />
+        <Route path="/gmail/callback" element={<GmailCallback />} />
         <Route element={<Layout />}>
           <Route index element={<Overview />} />
           <Route path="recruiters" element={<Recruiters />} />
           <Route path="opportunities" element={<Opportunities />} />
           <Route path="opportunities/:id" element={<OpportunityPage />} />
           <Route path="outreach" element={<Outreach />} />
-          <Route path="outreach/new" element={<Composer />} />
+          <Route path="outreach/new" element={<ComposerRoute />} />
           <Route path="outreach/:id" element={<MessagePage />} />
           <Route path="followups" element={<FollowUps />} />
           <Route path="analytics" element={<Analytics />} />
@@ -57,4 +59,18 @@ export function App() {
       </Routes>
     </Suspense>
   );
+}
+
+/**
+ * A fresh composer for every navigation to it (for example "Write email" for another
+ * recruiter while one is open), but not for the URL updates the composer makes itself.
+ */
+function ComposerRoute() {
+  const location = useLocation();
+  const [instance, setInstance] = useState({ key: location.key, seen: location.key });
+  if (location.key !== instance.seen) {
+    const internal = (location.state as { composerInternal?: boolean } | null)?.composerInternal === true;
+    setInstance({ key: internal ? instance.key : location.key, seen: location.key });
+  }
+  return <Composer key={instance.key} />;
 }

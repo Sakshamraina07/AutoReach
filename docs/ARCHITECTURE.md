@@ -132,15 +132,23 @@ builds (`extension/scripts/build.mjs`) instead of an extension bundler plugin.
    returns Google's consent URL with scopes
    `openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata`,
    `access_type=offline`, `prompt=consent`, `include_granted_scopes=true`, S256 PKCE.
-2. Google redirects to `GET /api/integrations/gmail/callback`. The API consumes the state
-   atomically, exchanges the code (client secret stays server-side), reads the account email
-   from the OpenID userinfo endpoint, records the **granted** scopes, encrypts tokens with
-   AES-256-GCM (`TOKEN_ENCRYPTION_KEY`), and redirects to the dashboard (or a "you can close this
-   tab" page for the extension).
-3. Access tokens are refreshed when within 5 minutes of expiry. `invalid_grant` marks the
+2. Google redirects to `GET /api/integrations/gmail/callback`. The API looks the state up
+   (without consuming it) and 303-redirects the code to where the flow started: the
+   dashboard's `/gmail/callback` page, or the extension's validated
+   `https://<id>.chromiumapp.org/gmail` redirect stored with the state. The parameters are
+   named `gmail_code`/`gmail_error` because supabase-js treats `code`/`error` on dashboard
+   pages as its own sign-in callback.
+3. The signed-in client posts the code and state to `POST /api/integrations/gmail/complete`.
+   The API consumes the state atomically **for that user only** (`DELETE … WHERE state = $1
+   AND user_id = $2 AND expires_at > now()`), exchanges the code (client secret and PKCE
+   verifier stay server-side), reads the account email from the OpenID userinfo endpoint,
+   records the **granted** scopes and encrypts tokens with AES-256-GCM (`TOKEN_ENCRYPTION_KEY`).
+   Binding completion to the session stops a forwarded consent link from attaching
+   someone else's mailbox to the account that started it.
+4. Access tokens are refreshed when within 5 minutes of expiry. `invalid_grant` marks the
    connection `needs_reauth`; the UI shows a reconnect banner and sending fails with
    `GMAIL_REAUTH_REQUIRED` instead of a generic error.
-4. Disconnect revokes the grant at `https://oauth2.googleapis.com/revoke` and deletes the
+5. Disconnect revokes the grant at `https://oauth2.googleapis.com/revoke` and deletes the
    stored tokens.
 
 Why `gmail.metadata`: reply detection needs `users.history.list`, `users.threads.get` and
@@ -283,7 +291,7 @@ timezone (`user_settings.timezone`, detected at onboarding).
 | `email_history` | renamed `email_messages`; `status` → `legacy_status`; `delivered`→`sent`, `failed`/`abandoned`→`failed`, `sending`→`unknown`; `opened_at`→`first_open_at`, plus one legacy `email_events` row; `tracking_token` = old id so old pixels resolve |
 | `user_smtp_settings` | tokens imported, encrypted, into `oauth_connections` by the backend on first boot with `TOKEN_ENCRYPTION_KEY`; plaintext columns then nulled. Table kept until a later cleanup |
 | `auth.users.user_metadata` | copied to `profiles` (`name`, `degree`, `location`, `contact`→`phone` or `primary_email`, `year`→`legacy_year`) |
-| public résumé URL | `resumes` row pointing at the same object path; bucket switched to private |
+| public résumé URL | `resumes` row pointing at the same object path, only when the key is the user's own v1 upload (`<user id>-<timestamp>.<ext>`; metadata is user-editable) and only on the first run; bucket switched to private. At runtime a résumé row is read or deleted only if its key belongs to its owner |
 
 ## 7. Configuration
 
@@ -300,11 +308,18 @@ UI (e.g. "AI drafting is not configured on the server"). See `.env.example` and
 - **Integration** (backend, real PostgreSQL 16 started by the test harness via `initdb`): migrations
   from a seeded *legacy* schema, RLS isolation between two users, CRM dedupe/merge, opportunity
   links, send state machine with a fake Gmail transport (success, 401 re-auth, 429, 5xx → unknown,
-  double submit, missing résumé, checksum mismatch), reply sync (reply, bounce, auto-reply,
-  ambiguous sender, expired cursor), follow-up creation/cancellation, tracking token mapping and
-  dedupe, analytics from stored rows.
-- **Dashboard**: component tests for status/caveat rendering; a Playwright smoke run against the
-  real API in dev-login mode produces the screenshots in `docs/screenshots/`.
+  double submit, simultaneous sends against the daily limit, an attempt taken over while
+  preparing, past schedule times, missing résumé, checksum mismatch), queue fairness between
+  users, reply sync (reply, bounce, delay notice, auto-reply, ambiguous sender, deleted
+  messages, truncated history, expired cursor), the two-step Gmail connection (completion bound
+  to the user who started it, extension redirect, declined consent), follow-up
+  creation/cancellation, tracking token mapping and dedupe, analytics from stored rows.
+- **Dashboard**: component and flow tests (status/caveat rendering, settings, the Gmail callback
+  page, stacked dialogs); a Playwright run against the real API in dev-login mode produces the
+  screenshots in `docs/screenshots/`.
+- **Extension**: the service-worker API proxy (refresh once on 401, sender checks), page
+  capture parsing, Gmail DOM reading, the Gmail card's backoff and shutdown after an update,
+  the Gmail connect flow, and the generated manifest's permissions.
 - External services (Gmail, Google OAuth, AI providers, Supabase Storage) are exercised through
   their HTTP clients with injected transports in tests. Real-credential calls are **not** part of
   the automated suite and are listed as manual verification steps in `docs/DEPLOYMENT.md` (§8).

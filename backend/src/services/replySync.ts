@@ -21,6 +21,18 @@ export interface InboundHeaders {
   contentType: string | null;
 }
 
+/** "Delivery Status Notification (Delay)", "Delayed Mail (still being retried)", "Warning: …". */
+function isDeliveryDelaySubject(subject: string): boolean {
+  return /\b(delay|delayed|still being retried)\b/i.test(subject) || /^warning\b/i.test(subject);
+}
+
+/** A mail server saying delivery is delayed: recorded, but neither a bounce nor something to review. */
+export function isDeliveryDelay(h: InboundHeaders): boolean {
+  const local = (parseAddressHeader(h.from)?.email ?? '').split('@')[0] ?? '';
+  const fromServer = /^(mailer-daemon|postmaster)$/i.test(local) || /report-type\s*=\s*"?delivery-status/i.test(h.contentType ?? '');
+  return fromServer && isDeliveryDelaySubject((h.subject ?? '').trim());
+}
+
 export function classifyInbound(h: InboundHeaders, ctx: { accountEmail: string; recruiterEmail: string | null; labelIds?: string[] }): InboundClassification {
   const from = parseAddressHeader(h.from)?.email ?? '';
   if (ctx.labelIds?.includes('SENT') || (from && from === normalizeEmail(ctx.accountEmail))) return 'own_message';
@@ -31,6 +43,8 @@ export function classifyInbound(h: InboundHeaders, ctx: { accountEmail: string; 
     /report-type\s*=\s*"?delivery-status/i.test(h.contentType ?? '') ||
     /^(delivery status notification|undeliverable|undelivered mail|mail delivery (failed|subsystem)|returned mail|failure notice)/i.test(subject)
   ) {
+    // A delay warning is not a failure: the message may still be delivered (see isDeliveryDelay).
+    if (isDeliveryDelaySubject(subject)) return 'other_sender';
     return 'bounce';
   }
   const autoSubmitted = (h.autoSubmitted ?? '').trim().toLowerCase();
@@ -93,7 +107,8 @@ export async function applyThreadMessage(tx: Tx, userId: string, accountEmail: s
   );
   const direction = classification === 'own_message' ? 'outbound' : 'inbound';
   const relevant = !!matched; // messages before our first email are earlier conversation, not replies
-  const needsReview = relevant && (classification === 'possible_reply' || classification === 'other_sender');
+  const delayNotice = isDeliveryDelay(headersOf(m));
+  const needsReview = relevant && !delayNotice && (classification === 'possible_reply' || classification === 'other_sender');
 
   const inserted = await tx.maybeOne<{ id: string }>(
     `INSERT INTO thread_messages (user_id, thread_id, gmail_message_id, direction, from_email, from_name, subject, received_at, classification, matched_message_id, needs_review)
@@ -116,6 +131,10 @@ export async function applyThreadMessage(tx: Tx, userId: string, accountEmail: s
   if (!relevant || !matched) return classification;
 
   const subjectLabel = `"${matched.subject.slice(0, 100)}"`;
+  if (delayNotice) {
+    await logActivity(tx, userId, 'delivery_delayed', `Delivery of ${subjectLabel} is delayed; the mail server is still trying`, { recruiterId: thread.recruiter_id, messageId: matched.id }, {}, receivedAt);
+    return classification;
+  }
   switch (classification) {
     case 'reply': {
       await tx.query(
@@ -180,6 +199,8 @@ export interface SyncResult {
 const TRACK_WINDOW_DAYS = 120;
 const RESYNC_WINDOW_DAYS = 60;
 const MAX_MESSAGES_PER_SYNC = 300;
+/** History entries read per run; the cursor resumes from where a run stopped. */
+const MAX_HISTORY_ENTRIES = 5000;
 
 async function trackedThreads(tx: Tx, userId: string, sinceDays: number): Promise<ThreadRow[]> {
   return tx.many<ThreadRow>(
@@ -239,16 +260,20 @@ export async function syncUserReplies(deps: Deps, userId: string): Promise<SyncR
     } else {
       const threads = await deps.db.withUser(userId, (tx) => trackedThreads(tx, userId, TRACK_WINDOW_DAYS));
       const byGmailId = new Map(threads.map((t) => [t.gmail_thread_id, t]));
-      const added: { id: string; threadId: string; labelIds?: string[] }[] = [];
+      // Each added message keeps the id of the history record it came from, so the cursor
+      // can be saved at the last record we fully processed if this run stops early.
+      const added: { recordId: string; message: { id: string; threadId: string; labelIds?: string[] } }[] = [];
       let pageToken: string | undefined;
-      newHistoryId = conn.history_id;
+      let latestHistoryId = conn.history_id;
+      let listTruncated = false;
       try {
         do {
           const page = await client.listHistory(conn.history_id, pageToken);
-          for (const h of page.history ?? []) for (const a of h.messagesAdded ?? []) added.push(a.message);
-          newHistoryId = page.historyId ?? newHistoryId;
+          for (const h of page.history ?? []) for (const a of h.messagesAdded ?? []) added.push({ recordId: h.id, message: a.message });
+          latestHistoryId = page.historyId ?? latestHistoryId;
           pageToken = page.nextPageToken;
-        } while (pageToken && added.length < 5000);
+        } while (pageToken && added.length < MAX_HISTORY_ENTRIES);
+        listTruncated = !!pageToken;
       } catch (err) {
         if (err instanceof GmailApiError && err.kind === 'not_found') {
           // History cursor expired (Gmail keeps it ~1 week, sometimes less): bounded full resync.
@@ -260,19 +285,36 @@ export async function syncUserReplies(deps: Deps, userId: string): Promise<SyncR
         throw err;
       }
 
+      /** Metadata for one message, or null if it no longer exists (deleted, or a replaced draft autosave). */
+      const metadataOrGone = async (id: string): Promise<GmailMessageMeta | null> => {
+        try {
+          return await client.getMessageMetadata(id);
+        } catch (err) {
+          if (err instanceof GmailApiError && err.kind === 'not_found') return null;
+          throw err;
+        }
+      };
+
       const seen = new Set<string>();
       let fetched = 0;
-      for (const a of added) {
-        if (seen.has(a.id) || fetched >= MAX_MESSAGES_PER_SYNC) continue;
-        seen.add(a.id);
+      let stoppedAt: number | null = null;
+      for (let i = 0; i < added.length; i++) {
+        const { message: a } = added[i]!;
+        if (seen.has(a.id)) continue;
         let thread = byGmailId.get(a.threadId);
+        const needsFetch = !!thread || (settings.reply_scan_new_threads && !a.labelIds?.includes('SENT'));
+        if (needsFetch && fetched >= MAX_MESSAGES_PER_SYNC) {
+          stoppedAt = i;
+          break;
+        }
+        seen.add(a.id);
         if (!thread) {
           // Untracked thread. Only look at it if the user opted in, and only at headers.
-          if (!settings.reply_scan_new_threads || a.labelIds?.includes('SENT')) continue;
+          if (!needsFetch) continue;
           fetched++;
-          const meta = await client.getMessageMetadata(a.id, ['From', 'Subject']);
-          const fromEmail = parseAddressHeader(header(meta, 'From'))?.email;
-          if (!fromEmail) continue;
+          const meta = await metadataOrGone(a.id);
+          const fromEmail = meta ? parseAddressHeader(header(meta, 'From'))?.email : null;
+          if (!meta || !fromEmail) continue;
           const created = await deps.db.withUser(userId, async (tx) => {
             const rec = await tx.maybeOne<{ id: string; email: string }>(
               `SELECT id, email FROM recruiters WHERE user_id = $1 AND email_normalized = $2 AND merged_into_id IS NULL`,
@@ -298,10 +340,22 @@ export async function syncUserReplies(deps: Deps, userId: string): Promise<SyncR
           continue;
         }
         fetched++;
-        const meta = await client.getMessageMetadata(a.id);
+        const meta = await metadataOrGone(a.id);
+        if (!meta) continue;
         const c = await deps.db.withUser(userId, (tx) => applyThreadMessage(tx, userId, accountEmail, thread!, meta));
         if (c) processed++;
         if (c === 'reply') replies++;
+      }
+
+      if (stoppedAt !== null) {
+        // Resume next run from the last history record whose messages were all handled.
+        const firstUnfinished = added[stoppedAt]!.recordId;
+        const lastDone = [...added.slice(0, stoppedAt)].reverse().find((e) => e.recordId !== firstUnfinished)?.recordId;
+        newHistoryId = lastDone ?? conn.history_id;
+      } else if (listTruncated) {
+        newHistoryId = added.at(-1)?.recordId ?? conn.history_id;
+      } else {
+        newHistoryId = latestHistoryId;
       }
     }
     await saveCursor(deps, userId, newHistoryId, null);

@@ -209,12 +209,29 @@ export function TagInput({ value, onChange, placeholder, id }: { value: string[]
 /* Dialog & drawer                                                     */
 /* ------------------------------------------------------------------ */
 
+/** Open dialogs and drawers, innermost last: Escape closes only the top one. */
+const overlayStack: symbol[] = [];
+
 function useEscape(onClose: () => void) {
+  const latest = useRef(onClose);
   useEffect(() => {
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    latest.current = onClose;
   }, [onClose]);
+  useEffect(() => {
+    const id = Symbol('overlay');
+    overlayStack.push(id);
+    const h = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || overlayStack.at(-1) !== id) return;
+      e.stopPropagation();
+      latest.current();
+    };
+    window.addEventListener('keydown', h);
+    return () => {
+      window.removeEventListener('keydown', h);
+      const i = overlayStack.lastIndexOf(id);
+      if (i >= 0) overlayStack.splice(i, 1);
+    };
+  }, []);
 }
 
 function useFocusOnOpen() {

@@ -7,6 +7,7 @@ import {
   followUpListQuerySchema,
   followUpUpdateSchema,
   gmailAuthorizeSchema,
+  gmailCompleteSchema,
   messageListQuerySchema,
   qualityCheckSchema,
   replyCorrectionSchema,
@@ -18,7 +19,7 @@ import type { Deps } from '../../context.js';
 import { badRequest, conflict } from '../../errors.js';
 import { buildDraftContext, generateDraft, qualityFor, refineDraft } from '../../services/drafting.js';
 import { getFollowUp, listFollowUps, updateFollowUp } from '../../services/followups.js';
-import { connectionStatus, createAuthorization, disconnect } from '../../services/gmail/connection.js';
+import { completeAuthorization, connectionStatus, createAuthorization, disconnect } from '../../services/gmail/connection.js';
 import * as messages from '../../services/messages.js';
 import { syncUserReplies } from '../../services/replySync.js';
 import { getSettings } from '../../services/settings.js';
@@ -226,8 +227,14 @@ export function outreachRoutes(deps: Deps, limiters: { ai: RequestHandler; send:
   });
   r.post('/integrations/gmail/authorize', async (req, res) => {
     const uid = userId(req);
-    const { return_to } = parse(gmailAuthorizeSchema, req.body ?? {});
-    res.json(await deps.db.withUser(uid, (tx) => createAuthorization(deps, tx, uid, return_to, req.user?.email)));
+    const { return_to, extension_redirect } = parse(gmailAuthorizeSchema, req.body ?? {});
+    res.json(await deps.db.withUser(uid, (tx) => createAuthorization(deps, tx, uid, return_to, req.user?.email, return_to === 'extension' ? extension_redirect : null)));
+  });
+  r.post('/integrations/gmail/complete', async (req, res) => {
+    const uid = userId(req);
+    const { code, state } = parse(gmailCompleteSchema, req.body);
+    const result = await completeAuthorization(deps, code, state, uid);
+    res.json({ email: result.email, return_to: result.returnTo });
   });
   r.delete('/integrations/gmail', async (req, res) => {
     const uid = userId(req);

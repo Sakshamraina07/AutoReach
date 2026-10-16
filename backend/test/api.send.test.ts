@@ -445,3 +445,107 @@ describe('scheduled and queued sending', () => {
     expect(env.google.sent).toHaveLength(0);
   });
 });
+
+describe('send safety', () => {
+  const PLAIN_BODY = "Hi Asha,\n\nI'm Sam, a final-year CS student interested in the Backend Developer Intern role at Contoso. I built CampusBoard, a React dashboard used by 120 students in the first month.\n\nWould you be open to a short call?\n\nThanks,\nSam Kumar";
+
+  async function freshSender(email: string) {
+    const u = await env.newUser(email);
+    await env.api(u.token).put('/api/profile', PROFILE).expect(200);
+    await env.connectGmail(u.id);
+    await env.api(u.token).patch('/api/settings', { require_resume_attachment: false }).expect(200);
+    const draftFor = async (to: string) => {
+      const rec = (await env.api(u.token).post('/api/recruiters', { full_name: 'Asha Rao', email: to, company: 'Contoso' }).expect(201)).body as { id: string };
+      return (await env.api(u.token).post('/api/messages', { recruiter_id: rec.id, subject: 'Backend Developer Intern — Sam Kumar', body_text: PLAIN_BODY }).expect(201)).body as { id: string };
+    };
+    return { ...u, draftFor };
+  }
+
+  it('refuses a schedule in the past instead of sending immediately', async () => {
+    const rec = await newRecruiter('past@northwind-labs.dev');
+    const draft = await newDraft(rec.id);
+    const r = await env.api(user.token).post(`/api/messages/${draft.id}/send`).set('Idempotency-Key', key()).send({ send_at: new Date(Date.now() - 3600_000).toISOString() });
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe('SEND_AT_IN_PAST');
+    expect(env.google.sent).toHaveLength(0);
+    expect((await env.api(user.token).get(`/api/messages/${draft.id}`).expect(200)).body.send_status).toBe('draft');
+  });
+
+  it('does not let a draft point at another user’s campaign', async () => {
+    const theirs = (await env.api(other.token).post('/api/campaigns', { name: 'Their campaign' }).expect(201)).body as { id: string };
+    const rec = await newRecruiter('campaign@northwind-labs.dev');
+    const draft = await newDraft(rec.id);
+    await env.api(user.token).patch(`/api/messages/${draft.id}`, { campaign_id: theirs.id }).expect(404);
+    const mine = (await env.api(user.token).post('/api/campaigns', { name: 'Spring internships' }).expect(201)).body as { id: string };
+    await env.api(user.token).patch(`/api/messages/${draft.id}`, { campaign_id: mine.id }).expect(200);
+  });
+
+  it('keeps simultaneous sends within the daily limit', async () => {
+    const s = await freshSender('limit-race@student-mail.dev');
+    await env.api(s.token).patch('/api/settings', { daily_send_limit: 1 }).expect(200);
+    const [a, b] = await Promise.all([s.draftFor('race-a@contoso.dev'), s.draftFor('race-b@contoso.dev')]);
+    const results = await Promise.all([
+      env.api(s.token).post(`/api/messages/${a.id}/send`).set('Idempotency-Key', key()).send({}),
+      env.api(s.token).post(`/api/messages/${b.id}/send`).set('Idempotency-Key', key()).send({}),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 429]);
+    expect(results.find((r) => r.status === 429)!.body.error.code).toBe('DAILY_LIMIT_REACHED');
+    expect(env.google.sent).toHaveLength(1);
+  });
+
+  it('stops before Gmail when the attempt was taken over while preparing', async () => {
+    const rec = await newRecruiter('slow-storage@northwind-labs.dev');
+    const draft = await newDraft(rec.id, { resume_id: resumeA.id });
+    const original = env.storage.get.bind(env.storage);
+    // Storage is slow: meanwhile the stale-send sweeper marks the attempt "unknown".
+    env.storage.get = async (p: string) => {
+      await env.sql(`UPDATE email_messages SET send_status = 'unknown', error_code = 'SEND_OUTCOME_UNKNOWN' WHERE id = $1`, [draft.id]);
+      return original(p);
+    };
+    try {
+      const r = await env.api(user.token).post(`/api/messages/${draft.id}/send`).set('Idempotency-Key', key()).send({}).expect(200);
+      expect(r.body.outcome).toBe('failed');
+      expect(r.body.error.code).toBe('SEND_PREPARATION_TIMEOUT');
+    } finally {
+      env.storage.get = original;
+    }
+    expect(env.google.sent).toHaveLength(0);
+    const m = (await env.api(user.token).get(`/api/messages/${draft.id}`).expect(200)).body;
+    expect(m.send_status).toBe('failed');
+    expect(m.error_code).toBe('SEND_PREPARATION_TIMEOUT');
+  });
+
+  it('resolving an old v1 "unknown" as sent uses its creation time and creates no reminder', async () => {
+    const rec = await newRecruiter('legacy-unknown@northwind-labs.dev');
+    const draft = await newDraft(rec.id);
+    const created = new Date(Date.now() - 200 * 86400_000).toISOString();
+    await env.sql(`UPDATE email_messages SET legacy = true, send_status = 'unknown', sending_started_at = NULL, created_at = $2, updated_at = now() WHERE id = $1`, [draft.id, created]);
+    const r = (await env.api(user.token).post(`/api/messages/${draft.id}/resolve`, { outcome: 'sent' }).expect(200)).body;
+    expect(r.send_status).toBe('sent');
+    expect(new Date(r.sent_at).toISOString()).toBe(created);
+    expect(await env.sql(`SELECT 1 FROM follow_ups WHERE original_message_id = $1 OR previous_message_id = $1`, [draft.id])).toHaveLength(0);
+  });
+
+  it('serves other users’ queues while one user is waiting on spacing', async () => {
+    const { processSendQueue } = await import('../src/services/messages.js');
+    env.clock.now = new Date(Date.now() + 3 * 3600_000);
+    try {
+      const waiting = await freshSender('spacing-wait@student-mail.dev');
+      const sentNow = await waiting.draftFor('just-sent@contoso.dev');
+      await env.sql(`UPDATE email_messages SET send_status = 'sent', sent_at = $2 WHERE id = $1`, [sentNow.id, env.clock.now.toISOString()]);
+      const older = await waiting.draftFor('older-queued@contoso.dev');
+      await env.api(waiting.token).post(`/api/messages/${older.id}/send`).set('Idempotency-Key', key()).send({ queue: true }).expect(200);
+      await env.sql(`UPDATE email_messages SET queued_at = now() - interval '1 day' WHERE id = $1`, [older.id]);
+
+      const rec = await newRecruiter('fair-queue@northwind-labs.dev');
+      const mine = await newDraft(rec.id);
+      await env.api(user.token).post(`/api/messages/${mine.id}/send`).set('Idempotency-Key', key()).send({ queue: true }).expect(200);
+
+      expect(await processSendQueue(env.deps, 1)).toBe(1);
+      expect((await env.api(user.token).get(`/api/messages/${mine.id}`).expect(200)).body.send_status).toBe('sent');
+      expect((await env.api(waiting.token).get(`/api/messages/${older.id}`).expect(200)).body.send_status).toBe('queued');
+    } finally {
+      env.clock.now = new Date();
+    }
+  });
+});

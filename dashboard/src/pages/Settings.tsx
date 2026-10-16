@@ -8,6 +8,7 @@ import { Badge, Button, Confirm, Dialog, ErrorState, Field, PageHeader, SectionT
 import { api, download } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { browserTimezone, fmtBytes, fmtDate, fmtDateTime, plural } from '../lib/format';
+import { startGmailConnect } from '../lib/gmail';
 import { useInvalidate, useMe, useResumes, useTemplates } from '../lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -471,11 +472,6 @@ function EditResumeDialog({ r, onClose }: { r: Resume; onClose: () => void }) {
 /* ------------------------------------------------------------------ */
 /* Gmail                                                               */
 /* ------------------------------------------------------------------ */
-
-export async function startGmailConnect(returnTo: 'dashboard' | 'onboarding' = 'dashboard'): Promise<void> {
-  const { url } = await api<{ url: string }>('/api/integrations/gmail/authorize', { method: 'POST', body: { return_to: returnTo } });
-  window.location.assign(url);
-}
 
 function GmailSection() {
   const me = useMe();

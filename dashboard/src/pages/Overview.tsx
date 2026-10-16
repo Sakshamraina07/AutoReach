@@ -269,6 +269,7 @@ const ACTIVITY_DOT: Partial<Record<ActivityType, string>> = {
   open_detected: 'bg-opened',
   email_failed: 'bg-danger',
   bounce_detected: 'bg-danger',
+  delivery_delayed: 'bg-warn',
   email_send_unknown: 'bg-warn',
   reply_needs_review: 'bg-warn',
   followup_scheduled: 'bg-accent',

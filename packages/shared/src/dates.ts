@@ -158,3 +158,22 @@ export function startOfLocalDay(timezone: string, at: Date = new Date()): string
   const zone = isValidTimezone(timezone) ? timezone : 'UTC';
   return DateTime.fromJSDate(at).setZone(zone).startOf('day').toUTC().toISO()!;
 }
+
+const LOCAL_INPUT_FORMAT = "yyyy-MM-dd'T'HH:mm";
+
+/**
+ * A `<input type="datetime-local">` value read as wall-clock time in `timezone`
+ * (the user's AutoReach time zone, which may differ from the browser's), as a UTC
+ * ISO string. Null if the value isn't a valid date-time.
+ */
+export function zonedInputToUtc(value: string, timezone: string): string | null {
+  const zone = isValidTimezone(timezone) ? timezone : 'UTC';
+  const dt = DateTime.fromISO(value, { zone });
+  return dt.isValid ? dt.toUTC().toISO() : null;
+}
+
+/** The `datetime-local` value for an instant, shown as wall-clock time in `timezone`. */
+export function utcToZonedInput(at: Date, timezone: string): string {
+  const zone = isValidTimezone(timezone) ? timezone : 'UTC';
+  return DateTime.fromJSDate(at).setZone(zone).toFormat(LOCAL_INPUT_FORMAT);
+}

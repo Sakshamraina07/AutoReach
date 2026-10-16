@@ -4,7 +4,7 @@ import { signDevToken } from '../../auth/verify.js';
 import type { Deps } from '../../context.js';
 import { pendingMigrations } from '../../db/migrate.js';
 import { AppError, notFound } from '../../errors.js';
-import { completeAuthorization } from '../../services/gmail/connection.js';
+import { lookupAuthorization } from '../../services/gmail/connection.js';
 import { PIXEL, recordPixelHit } from '../../services/tracking.js';
 import { escapeHtml } from '../../services/gmail/mime.js';
 import { parse } from '../support.js';
@@ -74,28 +74,30 @@ export function publicRoutes(deps: Deps, limiters: { pixel: RequestHandler; oaut
     recordPixelHit(deps, String(req.params.id), req.headers['user-agent']).catch((err) => deps.logger.warn({ err: (err as Error).message }, 'legacy pixel record failed'));
   });
 
+  /**
+   * Google's redirect. The code is handed back to the signed-in client that started the
+   * flow (dashboard page or the extension's chrome.identity redirect), which completes it
+   * with POST /api/integrations/gmail/complete. The code is useless without the PKCE
+   * verifier, which never leaves the server.
+   */
   r.get('/api/integrations/gmail/callback', limiters.oauth, async (req, res) => {
     const q = z.object({ code: z.string().max(2048).optional(), state: z.string().max(256).optional(), error: z.string().max(200).optional() }).safeParse(req.query);
-    const dashboard = `${deps.config.dashboardUrl}/settings?section=gmail`;
-    if (!q.success || q.data.error || !q.data.code || !q.data.state) {
-      const reason = q.success && q.data.error === 'access_denied' ? 'You cancelled the Google permission screen.' : 'Google did not return an authorization code.';
-      return res.status(400).type('html').send(resultPage('Gmail was not connected', `${reason} Return to AutoReach and try again.`, false));
+    const started = q.success && q.data.state ? await lookupAuthorization(deps, q.data.state) : null;
+    if (!q.success || !q.data.state || !started) {
+      return res.status(400).type('html').send(resultPage('Gmail was not connected', 'This Gmail connection link has expired or was already used. Return to AutoReach and start again.', false));
     }
-    try {
-      const result = await completeAuthorization(deps, q.data.code, q.data.state);
-      if (result.returnTo === 'extension') {
-        return res.type('html').send(resultPage('Gmail connected', `AutoReach can now send from ${result.email}. You can close this tab.`, true));
-      }
-      if (result.returnTo === 'onboarding') return res.redirect(303, `${deps.config.dashboardUrl}/onboarding?gmail=connected`);
-      return res.redirect(303, `${dashboard}&gmail=connected`);
-    } catch (err) {
-      const message = err instanceof AppError ? err.message : 'Something went wrong while connecting Gmail.';
-      if (!(err instanceof AppError)) deps.logger.error({ err }, 'gmail callback failed');
-      return res.status(400).type('html').send(resultPage('Gmail was not connected', message, false));
-    }
+    const target = new URL(started.returnTo === 'extension' && started.returnUrl ? started.returnUrl : `${deps.config.dashboardUrl}/gmail/callback`);
+    if (q.data.error || !q.data.code) target.searchParams.set('gmail_error', q.data.error === 'access_denied' ? 'access_denied' : 'no_code');
+    // Not `code`/`error`: supabase-js treats those parameters on dashboard pages as its own sign-in callback.
+    else target.searchParams.set('gmail_code', q.data.code);
+    target.searchParams.set('state', q.data.state);
+    // Lets the dashboard page offer the right way back even when the connection failed.
+    if (started.returnTo !== 'extension') target.searchParams.set('return_to', started.returnTo);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    return res.redirect(303, target.toString());
   });
 
-  // Development-only sign-in (refused by config in production).
   r.post('/api/dev/login', limiters.devLogin, async (req, res) => {
     if (!deps.config.devLogin.enabled || !deps.config.devLogin.secret) throw notFound('Route');
     const { email } = parse(z.object({ email: z.email().max(254) }), req.body);

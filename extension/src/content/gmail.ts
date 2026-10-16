@@ -19,6 +19,10 @@ const SELF_VIEW_EVERY_MS = 15_000;
 const cache = new Map<string, { at: number; result: RecruiterLookupResult }>();
 let enabled = true;
 let signedOut = false;
+/** After a failed lookup, wait before asking again (Gmail changes its DOM constantly). */
+let retryAt = 0;
+let failures = 0;
+let orphaned = false;
 let currentKey = '';
 let hiddenKey = '';
 let selfViewTimer: ReturnType<typeof setInterval> | undefined;
@@ -31,17 +35,24 @@ async function lookup(emails: string[]): Promise<RecruiterLookupResult[] | null>
     return !hit || now - hit.at > CACHE_MS;
   });
   if (missing.length) {
+    if (now < retryAt) return null;
     let res: ApiResult<RecruiterLookupResult[]> | undefined;
     try {
       res = (await chrome.runtime.sendMessage({ type: 'gmail:lookup', emails: missing })) as ApiResult<RecruiterLookupResult[]>;
     } catch {
-      return null; // extension reloaded; this content script is orphaned
+      teardown(); // the extension was updated or removed; this copy of the script is orphaned
+      return null;
     }
     if (!res?.ok) {
-      if (res && ['SIGNED_OUT', 'SESSION_EXPIRED'].includes(res.error.code)) signedOut = true;
+      signedOut = !!res && ['SIGNED_OUT', 'SESSION_EXPIRED'].includes(res.error.code);
+      // Signed out or assist turned off: check again in a few minutes. Errors: 5 s, 10 s, … up to 5 minutes.
+      failures++;
+      retryAt = Date.now() + (signedOut || res?.error.code === 'ASSIST_OFF' ? 3 * 60_000 : Math.min(5 * 60_000, 5_000 * 2 ** (failures - 1)));
       return null;
     }
     signedOut = false;
+    failures = 0;
+    retryAt = 0;
     for (const r of res.data) cache.set(r.email.toLowerCase(), { at: now, result: r });
   }
   return emails.map((e) => cache.get(e)?.result).filter((r): r is RecruiterLookupResult => !!r);
@@ -160,7 +171,7 @@ function startSelfView(emails: string[]) {
   stopSelfView();
   if (!emails.length) return;
   const ping = () => {
-    if (document.visibilityState === 'visible') void chrome.runtime.sendMessage({ type: 'gmail:selfView', emails }).catch(() => stopSelfView());
+    if (document.visibilityState === 'visible') void chrome.runtime.sendMessage({ type: 'gmail:selfView', emails }).catch(() => teardown());
   };
   ping();
   selfViewTimer = setInterval(ping, SELF_VIEW_EVERY_MS);
@@ -168,6 +179,7 @@ function startSelfView(emails: string[]) {
 
 async function update() {
   scheduled = undefined;
+  if (orphaned) return;
   if (!enabled) return hide();
   const recipients = composeRecipients(document);
   const composing = recipients.length > 0 || composeDialogs(document).length > 0;
@@ -178,7 +190,8 @@ async function update() {
     stopSelfView();
     return hide();
   }
-  if (key === currentKey && host?.isConnected) return;
+  // Same view as last time: nothing to do, unless the last lookup failed and its wait is over.
+  if (key === currentKey && (host?.isConnected || Date.now() < retryAt)) return;
   currentKey = key;
   if (key === hiddenKey) return;
   const results = await lookup(emails);
@@ -194,7 +207,7 @@ async function update() {
 }
 
 function schedule() {
-  if (scheduled) return;
+  if (scheduled || orphaned) return;
   scheduled = setTimeout(() => void update(), 500);
 }
 
@@ -230,18 +243,44 @@ chrome.runtime.onMessage.addListener((msg: { type?: string; subject?: string; bo
   return false;
 });
 
-void chrome.storage.local.get(GMAIL_ASSIST_KEY).then((v) => {
-  enabled = (v as Record<string, boolean | undefined>)[GMAIL_ASSIST_KEY] !== false;
-  schedule();
-});
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && GMAIL_ASSIST_KEY in changes) {
+const observer = new MutationObserver(schedule);
+
+function onStorageChange(changes: Record<string, chrome.storage.StorageChange>, area: string) {
+  if (area === 'sync' && GMAIL_ASSIST_KEY in changes) {
     enabled = changes[GMAIL_ASSIST_KEY]?.newValue !== false;
     currentKey = '';
+    retryAt = 0;
+    failures = 0;
     schedule();
   }
-});
+}
 
-new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['email', 'data-hovercard-id', 'value'] });
+/** Stop everything once the extension behind this script is gone (updated, reloaded or removed). */
+function teardown() {
+  if (orphaned) return;
+  orphaned = true;
+  observer.disconnect();
+  window.removeEventListener('hashchange', schedule);
+  document.removeEventListener('visibilitychange', schedule);
+  if (scheduled) clearTimeout(scheduled);
+  stopSelfView();
+  hide();
+  try {
+    chrome.storage.onChanged.removeListener(onStorageChange);
+  } catch {
+    /* extension context already invalidated */
+  }
+}
+
+chrome.storage.sync
+  .get(GMAIL_ASSIST_KEY)
+  .then((v) => {
+    enabled = (v as Record<string, boolean | undefined>)[GMAIL_ASSIST_KEY] !== false;
+    schedule();
+  })
+  .catch(() => teardown());
+chrome.storage.onChanged.addListener(onStorageChange);
+
+observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['email', 'data-hovercard-id', 'value'] });
 window.addEventListener('hashchange', schedule);
 document.addEventListener('visibilitychange', schedule);

@@ -12,6 +12,8 @@ import {
   type QualityFinding,
   type RecruiterSummary,
   type Tone,
+  utcToZonedInput,
+  zonedInputToUtc,
 } from '@autoreach/shared';
 import { ArrowLeft, FileText, Paperclip, RefreshCw, Sparkles, Wand2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -31,6 +33,9 @@ interface SendResponse {
 }
 
 const REFINES: AiRefineAction[] = ['concise', 'personalize', 'emphasize_projects', 'regenerate'];
+
+/** Marks URL updates the composer makes itself, so the route keeps this composer instance. */
+const COMPOSER_INTERNAL = { composerInternal: true } as const;
 
 export default function Composer() {
   const [params, setParams] = useSearchParams();
@@ -61,7 +66,8 @@ export default function Composer() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [sendOpen, setSendOpen] = useState(false);
-  const [addingRecruiter, setAddingRecruiter] = useState(false);
+  // Arriving from the extension's Gmail card for someone not saved yet: offer to add them.
+  const [addingRecruiter, setAddingRecruiter] = useState(() => !params.get('recruiter') && !!params.get('email'));
   const [loadedDraft, setLoadedDraft] = useState(() => !params.get('draft') && !params.get('followup'));
   const loadStarted = useRef(false);
 
@@ -85,7 +91,7 @@ export default function Composer() {
           const next = new URLSearchParams(params);
           next.delete('followup');
           next.set('draft', m.id);
-          setParams(next, { replace: true });
+          setParams(next, { replace: true, state: COMPOSER_INTERNAL });
         } else {
           m = await api<MessageDetail>(`/api/messages/${id}`);
         }
@@ -174,7 +180,8 @@ export default function Composer() {
     }
   }
 
-  async function saveDraft(silent = false): Promise<string | null> {
+  /** With `rethrow`, a failed save throws instead of showing the error on the page (the send dialog shows it). */
+  async function saveDraft(silent = false, rethrow = false): Promise<string | null> {
     if (!recruiterId) {
       toast.info('Choose a recruiter first.');
       return null;
@@ -206,12 +213,13 @@ export default function Composer() {
         setDraftId(m.id);
         const next = new URLSearchParams(params);
         next.set('draft', m.id);
-        setParams(next, { replace: true });
+        setParams(next, { replace: true, state: COMPOSER_INTERNAL });
       }
       await invalidate();
       if (!silent) toast.success('Draft saved');
       return id;
     } catch (e) {
+      if (rethrow) throw e;
       setError(e);
       return null;
     }
@@ -469,9 +477,12 @@ export default function Composer() {
           blocking={blocking}
           findings={findings ?? []}
           kind={kind}
+          timezone={me.data?.settings.timezone ?? 'UTC'}
+          // Never fall back to the last saved version: what is sent must be what was reviewed.
           ensureDraft={async () => {
-            const id = await saveDraft(true);
-            return id ?? draftId;
+            const id = await saveDraft(true, true);
+            if (!id) throw new Error('Choose a recruiter before sending.');
+            return id;
           }}
           onClose={() => setSendOpen(false)}
           onDone={(res) => {
@@ -485,7 +496,12 @@ export default function Composer() {
       {addingRecruiter && (
         <AddRecruiterDialog
           onClose={() => setAddingRecruiter(false)}
-          initial={{ company: opportunity.data?.company ?? '', opportunity_id: opportunityId, target_role: opportunity.data?.title ?? manualRole }}
+          initial={{
+            company: opportunity.data?.company ?? '',
+            opportunity_id: opportunityId,
+            target_role: opportunity.data?.title ?? manualRole,
+            ...(params.get('email') ? { email: params.get('email')!, full_name: params.get('name') ?? '' } : {}),
+          }}
           onCreated={(x) => setRecruiterId(x.id)}
         />
       )}
@@ -506,7 +522,8 @@ function SendDialog(props: {
   blocking: boolean;
   findings: QualityFinding[];
   kind: 'initial' | 'follow_up';
-  ensureDraft: () => Promise<string | null>;
+  timezone: string;
+  ensureDraft: () => Promise<string>;
   onClose: () => void;
   onDone: (r: SendResponse) => void;
 }) {
@@ -523,15 +540,20 @@ function SendDialog(props: {
     setBusy(true);
     setError(null);
     try {
+      let sendAt: string | null = null;
+      if (when === 'schedule') {
+        sendAt = zonedInputToUtc(at, props.timezone);
+        if (!sendAt) throw new Error('Enter a date and time to schedule the email.');
+        if (new Date(sendAt).getTime() <= Date.now()) throw new Error('That time has already passed. Pick a later time, or choose "Send now".');
+      }
       const id = await props.ensureDraft();
-      if (!id) throw new Error('Could not save the draft before sending.');
       const res = await api<SendResponse>(`/api/messages/${id}/send`, {
         method: 'POST',
         headers: { 'Idempotency-Key': keyRef.current },
         body: {
           ...confirm,
           queue: when === 'queue',
-          send_at: when === 'schedule' && at ? new Date(at).toISOString() : null,
+          send_at: sendAt,
         },
       });
       if (res.outcome === 'failed' || res.outcome === 'unknown') {
@@ -592,7 +614,7 @@ function SendDialog(props: {
         <div role="alert" className="mb-4 rounded border border-warn/40 bg-warn/10 p-3 text-sm">
           <p>{props.gmailProblem.message}</p>
           {props.gmailProblem.action && (
-            <Link to="/settings?section=gmail" className="mt-1 inline-block font-medium" onClick={() => void props.ensureDraft()}>
+            <Link to="/settings?section=gmail" className="mt-1 inline-block font-medium" onClick={() => void props.ensureDraft().catch(() => undefined)}>
               {props.gmailProblem.action}
             </Link>
           )}
@@ -628,7 +650,22 @@ function SendDialog(props: {
             {l}
           </label>
         ))}
-        {when === 'schedule' && <input type="datetime-local" className="field mt-1 w-auto" value={at} onChange={(e) => setAt(e.target.value)} aria-label="Send at" />}
+        {when === 'schedule' && (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <input
+              type="datetime-local"
+              className="field w-auto"
+              value={at}
+              min={utcToZonedInput(new Date(), props.timezone)}
+              onChange={(e) => setAt(e.target.value)}
+              aria-label="Send at"
+              aria-describedby="send-at-zone"
+            />
+            <span id="send-at-zone" className="text-xs text-muted">
+              {props.timezone.replace(/_/g, ' ')} time (your time zone in Settings)
+            </span>
+          </div>
+        )}
       </fieldset>
 
       {(needs.size > 0 || props.blocking) && (

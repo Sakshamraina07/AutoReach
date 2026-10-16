@@ -30,29 +30,34 @@ export function CaptureView({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     void (async () => {
-      const tab = await activeTab();
-      if (tab?.id === undefined) {
-        setCaptureError(new Error('No active tab.'));
-        return;
+      try {
+        const tab = await activeTab();
+        if (tab?.id === undefined) {
+          setCaptureError(new Error('No active tab.'));
+          return;
+        }
+        const res = await send<{ ok: true; page: CapturedPage } | { ok: false; error: ApiErrorShape }>({ type: 'capture:page', tabId: tab.id });
+        if (!res.ok) {
+          setCaptureError(new ExtensionApiError(res.error));
+          setForm((f) => ({ ...f, job_url: tab.url ?? '' }));
+          return;
+        }
+        const p = res.page;
+        setPage(p);
+        setForm({
+          title: p.job.title ?? '',
+          company: p.job.company ?? '',
+          location: p.job.location ?? '',
+          employment_type: p.job.employment_type,
+          deadline: p.job.deadline ?? '',
+          job_url: p.job.url,
+          description: p.job.description ?? '',
+        });
+        if (p.emailsInSelection[0]) setRec((r) => ({ ...r, add: true, email: p.emailsInSelection[0]! }));
+      } catch (e) {
+        // The service worker didn't answer (for example right after an update): the form still works by hand.
+        setCaptureError(e);
       }
-      const res = await send<{ ok: true; page: CapturedPage } | { ok: false; error: ApiErrorShape }>({ type: 'capture:page', tabId: tab.id });
-      if (!res.ok) {
-        setCaptureError(new ExtensionApiError(res.error));
-        setForm((f) => ({ ...f, job_url: tab.url ?? '' }));
-        return;
-      }
-      const p = res.page;
-      setPage(p);
-      setForm({
-        title: p.job.title ?? '',
-        company: p.job.company ?? '',
-        location: p.job.location ?? '',
-        employment_type: p.job.employment_type,
-        deadline: p.job.deadline ?? '',
-        job_url: p.job.url,
-        description: p.job.description ?? '',
-      });
-      if (p.emailsInSelection[0]) setRec((r) => ({ ...r, add: true, email: p.emailsInSelection[0]! }));
     })();
   }, []);
 
@@ -96,9 +101,15 @@ export function CaptureView({ onDone }: { onDone: () => void }) {
           if (e instanceof ExtensionApiError && e.code === 'DUPLICATE_RECRUITER') {
             const existing = (e.details as { existing?: RecruiterSummary } | undefined)?.existing ?? null;
             if (existing) {
-              await api(`/api/recruiters/${existing.id}/opportunities`, { method: 'POST', body: { opportunity_id: opportunity.id } });
-              recruiter = existing;
-              note = `${existing.email} was already saved, so it was linked to this opportunity instead of added again.`;
+              try {
+                await api(`/api/recruiters/${existing.id}/opportunities`, { method: 'POST', body: { opportunity_id: opportunity.id } });
+                recruiter = existing;
+                note = `${existing.email} was already saved, so it was linked to this opportunity instead of added again.`;
+              } catch (linkError) {
+                note = `The opportunity was saved. ${existing.email} is already in your recruiters, but linking them failed: ${linkError instanceof Error ? linkError.message : String(linkError)}`;
+              }
+            } else {
+              note = `The opportunity was saved. ${rec.email.trim()} is already in your recruiters; link them from the dashboard.`;
             }
           } else {
             note = `The opportunity was saved, but the recruiter wasn't: ${e instanceof Error ? e.message : String(e)}`;

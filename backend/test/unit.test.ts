@@ -195,3 +195,18 @@ describe('contact discovery suggestions', () => {
     expect(r.suggestions.every((s) => s.source === 'Common address pattern')).toBe(true);
   });
 });
+
+describe('résumé storage ownership', () => {
+  it('accepts only the user’s own 2.0 and v1 object keys', async () => {
+    const { ownsStoragePath } = await import('../src/services/resumes.js');
+    const me = '6f1c2a5e-0000-4000-8000-000000000001';
+    const them = '6f1c2a5e-0000-4000-8000-000000000002';
+    expect(ownsStoragePath(me, `${me}/0b6c.pdf`)).toBe(true);
+    expect(ownsStoragePath(me, `${me}-1700000000000.pdf`)).toBe(true);
+    expect(ownsStoragePath(me, `${them}-1700000000000.pdf`)).toBe(false);
+    expect(ownsStoragePath(me, `${them}/0b6c.pdf`)).toBe(false);
+    expect(ownsStoragePath(me, `${me}/../${them}/0b6c.pdf`)).toBe(false);
+    expect(ownsStoragePath(me, `${me}/nested/0b6c.pdf`)).toBe(false);
+    expect(ownsStoragePath(me, `${me}-x/../../etc/passwd`)).toBe(false);
+  });
+});

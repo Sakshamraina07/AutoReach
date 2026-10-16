@@ -8,7 +8,7 @@ import { Button } from '../ui/components';
 export function SettingsView({ auth, onDone, onSignedOut }: { auth: AuthState; onDone: () => void; onSignedOut: (a: AuthState) => void }) {
   const [assist, setAssist] = useState<boolean | null>(null);
   useEffect(() => {
-    void chrome.storage.local.get(GMAIL_ASSIST_KEY).then((v) => setAssist((v as Record<string, boolean | undefined>)[GMAIL_ASSIST_KEY] !== false));
+    void chrome.storage.sync.get(GMAIL_ASSIST_KEY).then((v) => setAssist((v as Record<string, boolean | undefined>)[GMAIL_ASSIST_KEY] !== false));
   }, []);
 
   return (
@@ -38,7 +38,7 @@ export function SettingsView({ auth, onDone, onSignedOut }: { auth: AuthState; o
             onClick={() => {
               const next = !assist;
               setAssist(next);
-              void chrome.storage.local.set({ [GMAIL_ASSIST_KEY]: next });
+              void chrome.storage.sync.set({ [GMAIL_ASSIST_KEY]: next });
             }}
             className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors ${assist ? 'border-accent bg-accent' : 'border-line bg-raised'}`}
           >

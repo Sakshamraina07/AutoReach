@@ -416,8 +416,19 @@ export const analyticsRangeSchema = z.object({
   range: z.enum(['7d', '30d', '90d', '365d', 'all']).default('30d'),
 });
 
-export const gmailAuthorizeSchema = z.object({
-  return_to: z.enum(['dashboard', 'onboarding', 'extension']).default('dashboard'),
+/** The extension's chrome.identity redirect, e.g. https://abcdefghijklmnopabcdefghijklmnop.chromiumapp.org/gmail */
+export const EXTENSION_REDIRECT_RE = /^https:\/\/[a-p]{32}\.chromiumapp\.org\/[A-Za-z0-9_\-/]*$/;
+
+export const gmailAuthorizeSchema = z
+  .object({
+    return_to: z.enum(['dashboard', 'onboarding', 'extension']).default('dashboard'),
+    extension_redirect: z.string().max(200).regex(EXTENSION_REDIRECT_RE).optional(),
+  })
+  .refine((v) => v.return_to !== 'extension' || !!v.extension_redirect, { message: 'extension_redirect is required when return_to is extension', path: ['extension_redirect'] });
+
+export const gmailCompleteSchema = z.object({
+  code: z.string().min(1).max(2048),
+  state: z.string().min(1).max(256),
 });
 
 export const selfViewSchema = z.object({

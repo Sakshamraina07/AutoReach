@@ -6,8 +6,18 @@ import { parseCapturedPage, readPage } from '../lib/capture';
 import { config, dashboardComposeLink } from '../lib/config';
 import { GMAIL_ASSIST_KEY, PREFILL_KEY, type ApiErrorShape, type ApiResult, type Message } from '../lib/protocol';
 import { callApi } from './api';
+import { connectGmail } from './gmailConnect';
 import { isAllowedSender } from './senders';
 import { AuthError, authState, devSignIn, getToken, refreshToken, signIn, signOut } from './auth';
+
+// The session (Supabase tokens) lives in chrome.storage.local. Content scripts can read
+// local storage by default; restrict it to the extension's own pages and this worker.
+// Called on every start of the worker, before anything else runs.
+try {
+  void chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }).catch(() => undefined);
+} catch {
+  /* not available in this Chrome version */
+}
 
 const api = <T>(req: Parameters<typeof callApi>[0]) => callApi<T>(req, { apiUrl: config.apiUrl, fetch: (input, init) => fetch(input, init), getToken, refreshToken });
 
@@ -39,7 +49,7 @@ function toError(err: unknown): ApiErrorShape {
 }
 
 async function gmailAssistEnabled(): Promise<boolean> {
-  const v = ((await chrome.storage.local.get(GMAIL_ASSIST_KEY)) as Record<string, boolean | undefined>)[GMAIL_ASSIST_KEY];
+  const v = ((await chrome.storage.sync.get(GMAIL_ASSIST_KEY)) as Record<string, boolean | undefined>)[GMAIL_ASSIST_KEY];
   return v !== false;
 }
 
@@ -118,6 +128,8 @@ async function handle(msg: Message, sender: chrome.runtime.MessageSender): Promi
         return { ok: false, error: { status: 0, code: 'NOT_GMAIL', message: 'The current tab is not Gmail. Open Gmail and a compose window, then try again.' } };
       }
     }
+    case 'gmail:connect':
+      return connectGmail({ api, redirectUrl: chrome.identity.getRedirectURL('gmail'), launch: (url) => chrome.identity.launchWebAuthFlow({ url, interactive: true }) });
     default:
       return { ok: false, error: { status: 400, code: 'UNKNOWN_MESSAGE', message: 'Unknown request.' } };
   }

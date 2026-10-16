@@ -18,7 +18,7 @@ unverified (see [DEPLOYMENT.md](DEPLOYMENT.md) for the optional Hunter.io key).
 
 | Permission | Why |
 |---|---|
-| `storage` | Your sign-in session and the Gmail-assist on/off preference |
+| `storage` | Your sign-in session (local storage, which the extension closes to content scripts) and the Gmail-assist on/off preference (synced storage, the only value the Gmail script reads) |
 | `identity` | Google sign-in through `chrome.identity.launchWebAuthFlow` |
 | `activeTab` + `scripting` | Read the current page once, after you click "Add opportunity" |
 | `sidePanel` | The composer |
@@ -27,8 +27,12 @@ unverified (see [DEPLOYMENT.md](DEPLOYMENT.md) for the optional Hunter.io key).
 | Content script on `https://mail.google.com/*` | The Gmail assist |
 
 No `tabs`, no `<all_urls>`, no LinkedIn access, no remotely hosted code. Every API call is
-made by the service worker; the Gmail content script can only ask it for the read-only
-lookups it needs, and never sees your session token.
+made by the service worker. The Gmail content script can ask it for three things only:
+look up the addresses on screen, record that you're reading a thread with a recruiter (so
+opens of your own sent email are labelled "probably you"), and open the composer. Your
+session lives in `chrome.storage.local`, which the service worker restricts to the
+extension's own pages (`setAccessLevel('TRUSTED_CONTEXTS')`), so the content script can't
+read the token.
 
 ## Build
 
@@ -83,8 +87,12 @@ No CORS setting is needed for the extension: its service worker has host access 
 
 ## Connecting Gmail from the extension
 
-If Gmail isn't connected, the popup shows **Connect**. It opens Google's consent page in a
-new tab; afterwards that tab says "Gmail connected, you can close this tab".
+If Gmail isn't connected, the popup shows **Connect**. Google's consent page opens in a
+separate window (`chrome.identity`). When you allow access, Google returns to the API, which
+hands the result to the extension's `https://<extension-id>.chromiumapp.org/gmail` address;
+the service worker then finishes the connection as you. The popup may close while the
+Google window is open; reopen it to see Gmail connected. No Supabase or Google Cloud setting
+is needed for this redirect: the API only accepts `chromiumapp.org` addresses here.
 
 ## Recovering from problems
 
@@ -93,7 +101,8 @@ new tab; afterwards that tab says "Gmail connected, you can close this tab".
 | API unreachable or offline | "Can't reach AutoReach (…)" with **Try again**. Nothing is lost; drafts are saved on the server |
 | Session expired | The service worker refreshes the session once; if that fails, the popup asks you to sign in again |
 | Gmail access expired | A **Reconnect** banner in the popup; the send button explains why it's disabled |
-| Extension updated while a tab was open | Reopen the popup or side panel; the Gmail card reappears on the next page change |
+| Extension updated or reloaded while Gmail was open | The old Gmail card removes itself. Chrome only adds the new version's script to pages loaded afterwards, so **reload the Gmail tab** to get the card back. Reopen the popup or side panel too |
+| API unreachable while Gmail is open | The Gmail card stays hidden and checks again after 5 s, 10 s, 20 s … up to every 5 minutes; when signed out or turned off, every 3 minutes |
 | A send whose result is unknown (network dropped mid-send) | It is marked "outcome unknown", never retried automatically; check Gmail's Sent folder and resolve it in the dashboard |
 
 ## Publishing to the Chrome Web Store (optional)

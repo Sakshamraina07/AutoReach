@@ -34,6 +34,9 @@ and extension show the message and the reference. Search the API logs for the
 | `GMAIL_REAUTH_REQUIRED` | Google rejected the saved access (revoked, password change, or the 7-day limit of an app in Testing) | Settings → Gmail → Reconnect |
 | `GMAIL_SCOPE_MISSING` | The connection lacks the send or header permission | Reconnect and keep the boxes ticked on Google's screen |
 | `REPLY_DETECTION_DISABLED` | The server runs with `GMAIL_REPLY_DETECTION=false` | Mark replies on each email, or enable it on the server |
+| `OAUTH_STATE_INVALID` | The connection link expired (10 minutes), was already used, or was finished while signed in as a different AutoReach user | Start the connection again from Settings → Gmail while signed in as the account that should send |
+| "This Gmail connection link has expired or was already used" (page on the API's address) | Same as above, seen when Google's redirect arrives after the link expired or a second time | Start again |
+| Extension: "the Google window was closed" / "access was declined" (`GMAIL_CONNECT_CANCELLED`, `GMAIL_CONNECT_DECLINED`) | The consent window was closed or Cancel was pressed | Click Connect again and allow both permissions |
 | Google shows `redirect_uri_mismatch` | The callback isn't registered | Add `${API_PUBLIC_URL}/api/integrations/gmail/callback` to the OAuth client exactly |
 | Google shows "This app is blocked" / "unverified" | The consent screen is in Testing and your address isn't a test user, or the app isn't verified | Add yourself under Audience → Test users |
 
@@ -53,7 +56,10 @@ and extension show the message and the reference. Search the API logs for the
 | `GMAIL_RATE_LIMITED`, `GMAIL_QUOTA_EXCEEDED` | Gmail asked to slow down. The email is marked **failed** (not sent); try again later |
 | `GMAIL_REJECTED` | Gmail refused the message (for example an invalid recipient). Marked **failed** |
 | `SEND_OUTCOME_UNKNOWN` / status **Outcome unknown** | The connection dropped or Gmail returned a server error after the request was sent, so it may or may not have gone out. AutoReach never retries these automatically. Check Gmail's Sent folder, then click **It was sent** or **It was not sent** on the message |
-| `IDEMPOTENCY_KEY_REUSED` | The same send request was submitted twice with different content; reopen the composer |
+| `IDEMPOTENCY_KEY_REUSED` | The request's Idempotency-Key was already used to send a *different* message (a client bug or a reused key). Nothing was sent; reopen the composer, which makes a new key |
+| `SEND_AT_IN_PAST` | The scheduled time had already passed (often a wrong day or time zone). Nothing was sent or queued; pick a later time. The time you enter is read in your AutoReach time zone (Settings → Sending) |
+| `SEND_PREPARATION_TIMEOUT` | Preparing the email (loading the résumé, refreshing Gmail access) took so long that the attempt was stopped before reaching Gmail. It was **not** sent; send it again |
+| `RESUME_STORAGE_TIMEOUT` | The résumé file didn't load from storage within a minute. Nothing was sent; try again, and check the storage service if it keeps happening |
 
 A message stuck in **Sending** for more than a few minutes (for example after a server
 restart) is moved to **Outcome unknown** automatically, for the same reason.

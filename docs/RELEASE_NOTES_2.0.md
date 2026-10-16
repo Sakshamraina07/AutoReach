@@ -23,9 +23,9 @@ Supabase, Railway or Gmail accounts.
 
 | Area | v1 | 2.0 |
 |---|---|---|
-| Sending | A worker emailed every new recruiter automatically every 10 s across all users; failures retried forever; delays didn't apply | Nothing is sent without an explicit Send or an explicit "approve for the queue". Idempotency keys stop double sends; one email per recruiter can be in flight; failures are final and visible; ambiguous outcomes are marked "unknown" and never retried automatically; per-user queue with pause, daily limit (default 25) and random 30–90 s spacing |
+| Sending | A worker emailed every new recruiter automatically every 10 s across all users; failures retried forever; delays didn't apply | Nothing is sent without an explicit Send or an explicit "approve for the queue". Idempotency keys stop double sends; one email per recruiter can be in flight; failures are final and visible; ambiguous outcomes are marked "unknown" and never retried automatically; per-user queue with pause, daily limit (default 25, held even when sends are approved at the same moment) and random 30–90 s spacing; a schedule time in the past is refused, and times are entered in your AutoReach time zone |
 | Résumé attachment | Public bucket and public URL fetched at send time; email sent without the résumé if the fetch failed; every file named `Resume.pdf` | Private storage, PDF only (checked by content), up to 10 MB, SHA-256 verified before every send; the send stops if the file is missing, empty, changed or corrupt; several labelled résumés; optional custom attachment name |
-| Gmail OAuth | Tokens in plain text; disconnect didn't revoke; expired grants crashed sends | Tokens encrypted (AES-256-GCM), single-use state + PKCE, revoke on disconnect, `invalid_grant` → "Reconnect Gmail" banner, v1 tokens encrypted on first start |
+| Gmail OAuth | Tokens in plain text; disconnect didn't revoke; expired grants crashed sends | Tokens encrypted (AES-256-GCM), single-use state + PKCE, the connection is completed only by the signed-in user who started it (a forwarded consent link can't attach someone else's mailbox), revoke on disconnect, `invalid_grant` → "Reconnect Gmail" banner, v1 tokens encrypted on first start |
 | MIME | Non-ASCII subjects and names broke; no line wrapping; HTML unescaped | RFC 2047/2231 encoding, wrapped base64, escaped HTML alternative, correct `In-Reply-To`/`References` |
 | Follow-ups | Sent automatically only when an email was *not opened*; used the anon key (broken with RLS, a data exposure without it); wrong threading | Reminders after a configurable number of business days, drafted in the same thread from your template or AI, reviewed before sending; cancelled by replies, bounces, do-not-contact or a closed status; optional auto-send only from your own template, capped per day, off by default |
 | Open tracking | Always on, forgeable, keyed by the row id, first open only | Off by default and disclosed; random 128-bit tokens; each signal classified (open detected / image proxy / probably you / probably a scanner) and de-duplicated; per-email opt-out; retention and delete-all; shown as approximate everywhere |
@@ -63,7 +63,7 @@ Supabase, Railway or Gmail accounts.
 * **Optional address suggestions** in the add-recruiter form, always unverified, requiring
   confirmation before any send.
 * TypeScript across the API, dashboard, extension and a shared package; database migrations;
-  131 automated tests; deployment config for Railway and Vercel.
+  159 automated tests; deployment config for Railway and Vercel.
 
 ## Removed
 

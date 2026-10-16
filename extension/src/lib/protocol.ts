@@ -39,7 +39,8 @@ export type Message =
   | { type: 'compose:open'; prefill: ComposePrefill }
   | { type: 'gmail:lookup'; emails: string[] }
   | { type: 'gmail:selfView'; emails: string[] }
-  | { type: 'gmail:insert'; tabId: number; subject: string; body: string };
+  | { type: 'gmail:insert'; tabId: number; subject: string; body: string }
+  | { type: 'gmail:connect' };
 
 /** What a composer should start with (from the popup or the Gmail assist). */
 export interface ComposePrefill {
@@ -59,7 +60,10 @@ export type MessageResponse<M extends Message> = M extends { type: 'auth:get' | 
     ? ApiResult
     : M extends { type: 'capture:page' }
       ? { ok: true; page: CapturedPage } | { ok: false; error: ApiErrorShape }
-      : { ok: true } | { ok: false; error: ApiErrorShape };
+      : M extends { type: 'gmail:connect' }
+        ? { ok: true; email: string } | { ok: false; error: ApiErrorShape }
+        : { ok: true } | { ok: false; error: ApiErrorShape };
 
 export const PREFILL_KEY = 'autoreach.composePrefill';
+/** In chrome.storage.sync: the only setting the Gmail content script may read (local storage holds the session and is closed to it). */
 export const GMAIL_ASSIST_KEY = 'autoreach.gmailAssist';

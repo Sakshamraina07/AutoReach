@@ -60,15 +60,21 @@ stored connections can't be decrypted and everyone has to reconnect Gmail once.
 1. In Settings → Gmail (or onboarding, or the extension popup) the user clicks **Connect Gmail**.
 2. The API creates a single-use `state` (10 minutes) and a PKCE verifier, and sends the
    browser to Google with `access_type=offline` and `prompt=consent`.
-3. Google redirects to `/api/integrations/gmail/callback`. The API checks the state,
-   exchanges the code, refuses the connection if the send permission was unticked,
-   encrypts the tokens and stores them. The browser returns to the dashboard (or to a
-   "you can close this tab" page when started from the extension).
-4. Access tokens are refreshed shortly before they expire. If Google answers
+3. Google redirects to `/api/integrations/gmail/callback`. The API checks that the state
+   exists and hasn't expired, then hands the code back to where the connection started:
+   the dashboard's `/gmail/callback` page, or the extension's
+   `https://<extension-id>.chromiumapp.org/gmail` address (caught by `chrome.identity`, so
+   no tab is left open). Nothing is exchanged at this point.
+4. That signed-in page (or the extension's service worker) calls
+   `POST /api/integrations/gmail/complete`. The API consumes the state **only if it belongs to
+   the signed-in user**, exchanges the code with the PKCE verifier, refuses the connection
+   if the send permission was unticked, and encrypts and stores the tokens. A consent link
+   forwarded to someone else therefore can't attach their mailbox to your account.
+5. Access tokens are refreshed shortly before they expire. If Google answers
    `invalid_grant` (revoked, password change, or an expired test-mode token), the
    connection is marked **needs reconnecting**: sending stops with a clear message and the
    dashboard shows a "Reconnect Gmail" banner. Nothing is retried blindly.
-5. **Disconnect** revokes the token at Google and deletes it from the database.
+6. **Disconnect** revokes the token at Google and deletes it from the database.
 
 v1 stored Gmail tokens in plain text. On start-up the 2.0 API encrypts any v1 tokens it
 finds and clears the plain-text copies, so v1 users can keep sending without reconnecting.

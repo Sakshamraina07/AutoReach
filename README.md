@@ -8,7 +8,7 @@ reminded when to follow up.
 ![Overview](docs/screenshots/overview-dark.png)
 
 *Screenshots show the real dashboard running locally with fictional demo data
-(`npm run seed:demo`); see [docs/screenshots](docs/screenshots).*
+(`npm run seed:demo -w @autoreach/backend`); see [docs/screenshots](docs/screenshots).*
 
 ## What it does
 

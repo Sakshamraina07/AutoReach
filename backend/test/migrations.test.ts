@@ -33,11 +33,14 @@ describe('v1 → v2 migration preserves data', () => {
       year: '2027',
       location: 'Pune, India',
       contact: '+91 90000 00000',
-      resume_url: 'https://proj.supabase.co/storage/v1/object/public/resumes/aaaa-1700000000000.pdf',
     });
-    bob = await createAuthUser(db.url, 'bob@gmail.com', { name: 'Bob', contact: 'bob.alt@gmail.com' });
+    // v1 stored `${userId}-${timestamp}.pdf` in the user's (user-editable) metadata.
+    // Bob's metadata points at Alice's file: it must not become Bob's résumé.
+    const fileUrl = (owner: string) => `https://proj.supabase.co/storage/v1/object/public/resumes/${owner}-1700000000000.pdf`;
+    bob = await createAuthUser(db.url, 'bob@gmail.com', { name: 'Bob', contact: 'bob.alt@gmail.com', resume_url: fileUrl(alice) });
 
     await withClient(db.url, async (c) => {
+      await c.query(`UPDATE auth.users SET raw_user_meta_data = raw_user_meta_data || jsonb_build_object('resume_url', $2::text) WHERE id = $1`, [alice, fileUrl(alice)]);
       await c.query(BASELINE);
       const ins = async (user: string, name: string, email: string, status: string, lastSent: string | null, followups = 0, role = 'SDE Intern') => {
         const { rows } = await c.query(
@@ -55,6 +58,9 @@ describe('v1 → v2 migration preserves data', () => {
       await c.query(`UPDATE recruiters SET created_at = now() - interval '60 days' WHERE id = $1`, [ids.dupOld]);
       ids.dupNew = await ins(alice, 'Case Two', 'case.dup@northwind.io', 'Pending', null);
       ids.bobs = await ins(bob, 'Other', 'meera@northwind.io', 'Sent', new Date().toISOString());
+      // A whitespace variant of an existing address (possible under v1's plain unique key).
+      ids.spaceDup = await ins(alice, 'Meera Again', ' meera@northwind.io ', 'Pending', null);
+      await c.query(`UPDATE recruiters SET created_at = now() - interval '1 day' WHERE id = $1`, [ids.spaceDup]);
 
       const hist = async (rec: string, user: string, status: string, subject: string, opened: string | null, thread: string | null) => {
         const { rows } = await c.query(
@@ -89,7 +95,7 @@ describe('v1 → v2 migration preserves data', () => {
     const rows = await withClient(db.url, (c) =>
       c.query(`SELECT id, full_name, target_role, legacy_status, outreach_status, email_normalized, merged_into_id, last_contacted_at, source FROM recruiters`),
     );
-    expect(rows.rowCount).toBe(6);
+    expect(rows.rowCount).toBe(7);
     const byId = Object.fromEntries(rows.rows.map((r) => [r.id, r]));
     expect(byId[ids.sent!]).toMatchObject({ full_name: 'Meera Iyer', target_role: 'SDE Intern', legacy_status: 'Sent', outreach_status: 'contacted' });
     expect(byId[ids.sent!].last_contacted_at).not.toBeNull();
@@ -99,6 +105,8 @@ describe('v1 → v2 migration preserves data', () => {
     expect(byId[ids.dupNew!].merged_into_id).toBe(ids.dupOld);
     expect(byId[ids.dupOld!].merged_into_id).toBeNull();
     expect(byId[ids.dupOld!].email_normalized).toBe('case.dup@northwind.io');
+    // trimmed, then merged into the older row instead of aborting the migration
+    expect(byId[ids.spaceDup!]).toMatchObject({ email_normalized: 'meera@northwind.io', merged_into_id: ids.sent });
   });
 
   it('renames email_history to email_messages and maps send outcomes honestly', async () => {
@@ -147,7 +155,9 @@ describe('v1 → v2 migration preserves data', () => {
       const pb = await c.query(`SELECT primary_email, phone FROM profiles WHERE user_id = $1`, [bob]);
       expect(pb.rows[0]).toEqual({ primary_email: 'bob.alt@gmail.com', phone: null });
       const r = await c.query(`SELECT storage_path, is_default, legacy, file_name FROM resumes WHERE user_id = $1`, [alice]);
-      expect(r.rows).toEqual([{ storage_path: 'aaaa-1700000000000.pdf', is_default: true, legacy: true, file_name: 'Resume.pdf' }]);
+      expect(r.rows).toEqual([{ storage_path: `${alice}-1700000000000.pdf`, is_default: true, legacy: true, file_name: 'Resume.pdf' }]);
+      const rb = await c.query(`SELECT storage_path FROM resumes WHERE user_id = $1`, [bob]);
+      expect(rb.rowCount).toBe(0);
       const s = await c.query(`SELECT tracking_enabled, default_resume_id IS NOT NULL AS has_default FROM user_settings WHERE user_id = $1`, [alice]);
       expect(s.rows[0]).toEqual({ tracking_enabled: false, has_default: true });
       const t = await c.query(`SELECT subject, body FROM email_templates WHERE user_id = $1`, [alice]);
@@ -156,6 +166,9 @@ describe('v1 → v2 migration preserves data', () => {
   });
 
   it('is idempotent when the v2 file is applied a second time', async () => {
+    // Changes a user made after the upgrade must survive a re-run.
+    await withClient(db.url, (c) => c.query(`DELETE FROM resumes WHERE user_id = $1`, [alice]));
+    await withClient(db.url, (c) => c.query(`UPDATE follow_ups SET status = 'cancelled', cancel_reason = 'manual' WHERE recruiter_id = $1`, [ids.dupOld]));
     const before = await withClient(db.url, (c) =>
       c.query(`SELECT (SELECT count(*) FROM recruiters) r, (SELECT count(*) FROM email_messages) m, (SELECT count(*) FROM follow_ups) f, (SELECT count(*) FROM activity_log) a, (SELECT count(*) FROM email_events) e, (SELECT count(*) FROM resumes) rs, (SELECT count(*) FROM profiles) p`),
     );
@@ -169,6 +182,8 @@ describe('v1 → v2 migration preserves data', () => {
       c.query(`SELECT (SELECT count(*) FROM recruiters) r, (SELECT count(*) FROM email_messages) m, (SELECT count(*) FROM follow_ups) f, (SELECT count(*) FROM activity_log) a, (SELECT count(*) FROM email_events) e, (SELECT count(*) FROM resumes) rs, (SELECT count(*) FROM profiles) p`),
     );
     expect(after.rows[0]).toEqual(before.rows[0]);
+    const fu = await withClient(db.url, (c) => c.query(`SELECT status FROM follow_ups WHERE recruiter_id = $1`, [ids.dupOld]));
+    expect(fu.rows).toEqual([{ status: 'cancelled' }]);
   });
 
   it('enforces per-user isolation for the application role and locks out public roles', async () => {

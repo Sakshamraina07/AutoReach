@@ -235,6 +235,9 @@ export async function updateDraft(tx: Tx, userId: string, id: string, patch: Dra
   if (fields.opportunity_id) {
     if (!(await tx.maybeOne(`SELECT 1 FROM opportunities WHERE user_id = $1 AND id = $2`, [userId, fields.opportunity_id]))) throw notFound('Opportunity');
   }
+  if (fields.campaign_id) {
+    if (!(await tx.maybeOne(`SELECT 1 FROM campaigns WHERE user_id = $1 AND id = $2`, [userId, fields.campaign_id]))) throw notFound('Campaign');
+  }
   const entries = Object.entries(fields);
   if (!entries.length) return;
   await tx.query(`UPDATE email_messages SET ${entries.map(([k], i) => `${k} = $${i + 3}`).join(', ')} WHERE user_id = $1 AND id = $2`, [
@@ -279,6 +282,15 @@ async function sentToday(tx: Tx, userId: string, tz: string, now: Date): Promise
 }
 
 export { sentToday };
+
+/**
+ * Serialises "count today's sends, then claim one" per user, so two sends approved at
+ * the same moment (two tabs, the queue worker and a manual send) can't both slip under
+ * the daily limit. Held until the claiming transaction commits.
+ */
+async function lockSendSlot(tx: Tx, userId: string): Promise<void> {
+  await tx.query(`SELECT 1 FROM user_settings WHERE user_id = $1 FOR UPDATE`, [userId]);
+}
 
 /**
  * Validates everything that must be true before an email may leave, given
@@ -382,6 +394,10 @@ export async function sendMessage(deps: Deps, userId: string, id: string, idempo
     await preflight(deps, tx, userId, msg, req, settings, { automated: false });
 
     const sendAt = req.send_at ? new Date(req.send_at) : null;
+    // A time already in the past is almost always a mistake (wrong day or time zone); never send it right away.
+    if (sendAt && sendAt.getTime() < deps.now().getTime() - 60_000) {
+      throw badRequest('The scheduled time is in the past. Pick a later time, or send now.', undefined, 'SEND_AT_IN_PAST');
+    }
     const meta = {
       ...(msg.generation_meta ?? {}),
       ...(req.confirm_duplicate ? { duplicate_confirmed: true } : {}),
@@ -406,6 +422,7 @@ export async function sendMessage(deps: Deps, userId: string, id: string, idempo
       return { queued: true as const };
     }
 
+    await lockSendSlot(tx, userId);
     const limitReached = (await sentToday(tx, userId, settings.timezone, deps.now())) >= settings.daily_send_limit;
     if (limitReached) {
       throw new AppError(429, 'DAILY_LIMIT_REACHED', `You've reached your daily limit of ${settings.daily_send_limit} emails. Schedule it for tomorrow or raise the limit in Settings.`);
@@ -503,6 +520,17 @@ export async function deliver(deps: Deps, userId: string, id: string): Promise<S
   }
 
   // ---- Phase B': the single, non-retried Gmail call ---------------------
+  // Preparation can be slow (storage, token refresh). If the stale-send sweeper or the user
+  // took this attempt over meanwhile, stop: nothing has been handed to Gmail yet. Refreshing
+  // sending_started_at gives the Gmail call itself the sweeper's full window.
+  const stillClaimed = await deps.db.withUser(userId, (tx) =>
+    tx.maybeOne(`UPDATE email_messages SET sending_started_at = now() WHERE user_id = $1 AND id = $2 AND send_status = 'sending' AND attempt_count = $3 RETURNING id`, [
+      userId,
+      id,
+      msg.attempt_count,
+    ]),
+  );
+  if (!stillClaimed) return abandonAttempt(deps, userId, id, msg.attempt_count);
   let gmailIds: { id: string; threadId: string };
   try {
     gmailIds = await gmailClientInfo.client.send(toBase64Url(raw), msg.kind === 'follow_up' ? parent?.gmail_thread_id ?? null : null);
@@ -590,6 +618,21 @@ export async function deliver(deps: Deps, userId: string, id: string): Promise<S
   return { outcome: 'sent', message };
 }
 
+/** This attempt lost its claim before calling Gmail, so it certainly wasn't sent by it. */
+async function abandonAttempt(deps: Deps, userId: string, id: string, attempt: number): Promise<SendOutcome> {
+  const message = 'Preparing this email took too long, so it was stopped before reaching Gmail. Nothing was sent; you can send it again.';
+  const detail = await deps.db.withUser(userId, async (tx) => {
+    // Only undo the sweeper's "unknown" for this same attempt; a newer attempt or the user's own resolution wins.
+    await tx.query(
+      `UPDATE email_messages SET send_status = 'failed', failed_at = now(), error_code = 'SEND_PREPARATION_TIMEOUT', error_message = $4
+       WHERE user_id = $1 AND id = $2 AND attempt_count = $3 AND send_status = 'unknown' AND error_code = 'SEND_OUTCOME_UNKNOWN'`,
+      [userId, id, attempt, message],
+    );
+    return getMessageDetail(tx, userId, id);
+  });
+  return { outcome: detail.send_status === 'sent' ? 'sent' : detail.send_status === 'unknown' ? 'unknown' : 'failed', message: detail, error: { code: 'SEND_PREPARATION_TIMEOUT', message } };
+}
+
 async function recordFailure(deps: Deps, userId: string, id: string, code: string, message: string): Promise<SendOutcome> {
   const detail = await deps.db.withUser(userId, async (tx) => {
     await tx.query(
@@ -630,7 +673,8 @@ export async function resolveUnknown(deps: Deps, tx: Tx, userId: string, id: str
       [userId, id],
     );
   } else {
-    const sentAt = (await tx.one<{ t: string }>(`SELECT coalesce(sending_started_at, updated_at) AS t FROM email_messages WHERE id = $1`, [id])).t;
+    // v1 rows have no sending_started_at; their creation time is when v1 attempted the send.
+    const sentAt = (await tx.one<{ t: string }>(`SELECT coalesce(sending_started_at, created_at) AS t FROM email_messages WHERE id = $1`, [id])).t;
     await tx.query(
       `UPDATE email_messages SET send_status = 'sent', sent_at = $3, error_code = NULL, error_message = NULL WHERE user_id = $1 AND id = $2`,
       [userId, id, sentAt],
@@ -640,8 +684,9 @@ export async function resolveUnknown(deps: Deps, tx: Tx, userId: string, id: str
         `UPDATE recruiters SET last_contacted_at = GREATEST(last_contacted_at, $3), outreach_status = CASE WHEN outreach_status = 'new' THEN 'contacted' ELSE outreach_status END WHERE user_id = $1 AND id = $2`,
         [userId, msg.recruiter_id, sentAt],
       );
+      // A v1 send from long ago shouldn't produce a reminder dated in the past.
       const settings = await getSettings(tx, userId);
-      await afterMessageSent(tx, userId, { id, recruiter_id: msg.recruiter_id, sent_at: new Date(sentAt).toISOString(), kind: msg.kind, follow_up_id: msg.follow_up_id, parent_message_id: msg.parent_message_id }, settings);
+      if (!msg.legacy) await afterMessageSent(tx, userId, { id, recruiter_id: msg.recruiter_id, sent_at: new Date(sentAt).toISOString(), kind: msg.kind, follow_up_id: msg.follow_up_id, parent_message_id: msg.parent_message_id }, settings);
     }
     await logActivity(tx, userId, 'email_sent', `Marked as sent: "${msg.subject.slice(0, 120)}"`, { recruiterId: msg.recruiter_id, messageId: id }, { manual_resolution: true });
   }
@@ -690,24 +735,33 @@ export async function correctReplyStatus(tx: Tx, userId: string, id: string, sta
  * pre-flight check at send time (things may have changed since approval).
  */
 export async function processSendQueue(deps: Deps, maxPerRun = 5): Promise<number> {
+  // Each user's next due email, oldest first. Users waiting on spacing or at their daily
+  // limit are skipped below, so the scan looks well past maxPerRun to keep them from
+  // starving everyone else.
   const candidates = await deps.db.withSystem((tx) =>
     tx.many<{ id: string; user_id: string }>(
-      `SELECT DISTINCT ON (m.user_id) m.id, m.user_id
-       FROM email_messages m JOIN user_settings s ON s.user_id = m.user_id
-       WHERE m.send_status = 'queued' AND (m.scheduled_for IS NULL OR m.scheduled_for <= now()) AND NOT s.sending_paused
-       ORDER BY m.user_id, coalesce(m.scheduled_for, m.queued_at) ASC
+      `SELECT id, user_id FROM (
+         SELECT DISTINCT ON (m.user_id) m.id, m.user_id, coalesce(m.scheduled_for, m.queued_at) AS due
+         FROM email_messages m JOIN user_settings s ON s.user_id = m.user_id
+         WHERE m.send_status = 'queued' AND (m.scheduled_for IS NULL OR m.scheduled_for <= now()) AND NOT s.sending_paused
+         ORDER BY m.user_id, coalesce(m.scheduled_for, m.queued_at) ASC, m.id
+       ) next_per_user
+       ORDER BY due ASC, id
        LIMIT $1`,
-      [maxPerRun],
+      [maxPerRun * 20],
     ),
   );
   let sent = 0;
+  let delivered = 0;
   for (const c of candidates) {
+    if (delivered >= maxPerRun) break;
     const claimed = await deps.db
       .withUser(c.user_id, async (tx) => {
         const msg = await tx.maybeOne<MessageRow>(`SELECT * FROM email_messages WHERE user_id = $1 AND id = $2 AND send_status = 'queued' FOR UPDATE SKIP LOCKED`, [c.user_id, c.id]);
         if (!msg) return false;
         const settings = await getSettings(tx, c.user_id);
         if (settings.sending_paused) return false;
+        await lockSendSlot(tx, c.user_id);
         // Spacing between consecutive sends for this user.
         const last = await tx.maybeOne<{ t: string | null }>(
           `SELECT max(coalesce(sent_at, sending_started_at)) AS t FROM email_messages WHERE user_id = $1 AND send_status IN ('sent','sending','unknown')`,
@@ -740,6 +794,7 @@ export async function processSendQueue(deps: Deps, maxPerRun = 5): Promise<numbe
         return false;
       });
     if (!claimed) continue;
+    delivered++;
     const result = await deliver(deps, c.user_id, c.id).catch((err) => {
       deps.logger.error({ err, messageId: c.id }, 'queued delivery failed');
       return null;

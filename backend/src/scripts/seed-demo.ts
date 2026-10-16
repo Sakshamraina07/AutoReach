@@ -514,7 +514,7 @@ async function main() {
         } else if (s.reply.kind === 'bounce') {
           await tx.query(`UPDATE email_messages SET reply_status = 'bounced' WHERE id = $1`, [lastId]);
           await tx.query(`UPDATE recruiters SET outreach_status = 'bounced' WHERE id = $2 AND user_id = $1`, [userId, r.id]);
-          await activity('bounce_received', `Email to ${r.email} bounced`, when, { recruiterId: r.id, messageId: lastId });
+          await activity('bounce_detected', `Email to ${r.email} bounced`, when, { recruiterId: r.id, messageId: lastId });
         } else {
           await tx.query(`UPDATE email_messages SET reply_status = 'needs_review' WHERE id = $1`, [lastId]);
         }

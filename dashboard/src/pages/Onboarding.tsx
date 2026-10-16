@@ -8,7 +8,8 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { browserTimezone, fmtBytes } from '../lib/format';
 import { useInvalidate, useMe, useResumes } from '../lib/queries';
-import { ResumeUpload, startGmailConnect, TimezoneSelect } from './Settings';
+import { startGmailConnect } from '../lib/gmail';
+import { ResumeUpload, TimezoneSelect } from './Settings';
 
 const STEPS = [
   { id: 'resume', title: 'Your résumé', intro: 'Upload the PDF you want attached to your emails. AutoReach can also read it to fill in your profile; you confirm every field.' },
