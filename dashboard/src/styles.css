@@ -1,0 +1,111 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens are RGB triplets so Tailwind opacity modifiers work (bg-accent/10). */
+:root {
+  --bg: 15 20 28; /* #0F141C ink navy */
+  --surface: 21 27 37; /* #151B25 */
+  --raised: 27 34 48; /* #1B2230 */
+  --line: 38 48 66; /* #263042 */
+  --ink: 230 234 242; /* #E6EAF2 */
+  --muted: 154 165 184; /* #9AA5B8 */
+  --faint: 107 118 137; /* #6B7689 */
+  --accent: 124 156 255; /* #7C9CFF ink blue */
+  --accent-ink: 12 18 34; /* text on accent */
+  --sent: 143 179 217; /* #8FB3D9 */
+  --opened: 183 156 255; /* #B79CFF — soft on purpose: an uncertain signal */
+  --replied: 95 211 160; /* #5FD3A0 */
+  --warn: 242 176 94; /* #F2B05E */
+  --danger: 242 116 116; /* #F27474 */
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: 246 247 249;
+  --surface: 255 255 255;
+  --raised: 241 243 247;
+  --line: 221 226 234;
+  --ink: 23 32 49;
+  --muted: 84 97 119;
+  --faint: 125 136 155;
+  --accent: 61 91 217;
+  --accent-ink: 255 255 255;
+  --sent: 62 104 148;
+  --opened: 116 82 206;
+  --replied: 22 140 92;
+  --warn: 176 104 14;
+  --danger: 200 54 54;
+  color-scheme: light;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg font-sans text-base text-ink antialiased;
+    font-feature-settings: 'tnum' 0;
+  }
+  ::selection {
+    @apply bg-accent/30;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tight;
+  }
+  a {
+    @apply text-accent hover:underline;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded border border-line bg-bg px-2.5 py-1.5 text-sm text-ink placeholder:text-faint;
+    @apply focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+  .field:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+  .panel {
+    @apply rounded-md border border-line bg-surface;
+  }
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+  .table th {
+    @apply h-8 border-b border-line px-3 text-left text-xs font-medium text-muted;
+  }
+  .table td {
+    @apply h-9 border-b border-line/60 px-3 align-middle;
+  }
+  .table tbody tr:hover td {
+    @apply bg-raised/60;
+  }
+}

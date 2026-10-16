@@ -209,8 +209,16 @@ describe('follow-ups', () => {
     const steps = r.follow_ups.map((f: { step: number; status: string }) => `${f.step}:${f.status}`).sort();
     expect(steps).toEqual(['1:completed', '2:pending']);
 
-    // Reschedule and dismiss.
     const step2 = r.follow_ups.find((f: { step: number }) => f.step === 2);
+    // Two simultaneous "draft follow-up" requests produce one draft, not two.
+    const [d1, d2] = await Promise.all([
+      env.api(user.token).post(`/api/followups/${step2.id}/draft`, { use_template: true }).expect(200),
+      env.api(user.token).post(`/api/followups/${step2.id}/draft`, { use_template: true }).expect(200),
+    ]);
+    expect(d1.body.message.id).toBe(d2.body.message.id);
+    expect(await env.sql(`SELECT 1 FROM email_messages WHERE follow_up_id = $1`, [step2.id])).toHaveLength(1);
+
+    // Reschedule and dismiss.
     const later = new Date(Date.now() + 30 * 86_400_000).toISOString();
     const moved = (await env.api(user.token).patch(`/api/followups/${step2.id}`, { due_at: later }).expect(200)).body;
     expect(new Date(moved.due_at).toISOString()).toBe(later);
@@ -273,6 +281,18 @@ describe('Gmail OAuth connection', () => {
     await env.api(u.token).del('/api/integrations/gmail').expect(204);
     expect(env.google.revoked).toContain('new-refresh');
     expect(await env.sql(`SELECT 1 FROM oauth_connections WHERE user_id = $1`, [u.id])).toHaveLength(0);
+  });
+
+  it('returns to the onboarding wizard when the connection was started there', async () => {
+    const u = await env.newUser('onboard-connect@student-mail.dev');
+    const auth = (await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'onboarding' }).expect(200)).body;
+    const state = new URL(auth.url).searchParams.get('state')!;
+    env.google.tokenResponses.push({ access_token: 'a2', refresh_token: 'r2', expires_in: 3600, scope: 'openid email https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.metadata' });
+    const request = (await import('supertest')).default;
+    const cb = await request(env.app).get(`/api/integrations/gmail/callback?code=abc&state=${encodeURIComponent(state)}`);
+    expect(cb.status).toBe(303);
+    expect(cb.headers.location).toBe('https://app.autoreach.test/onboarding?gmail=connected');
+    await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'elsewhere' }).expect(400);
   });
 
   it('refuses a connection where the user unticked the send permission', async () => {

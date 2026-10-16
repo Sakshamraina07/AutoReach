@@ -215,3 +215,16 @@ describe('opportunities', () => {
     expect(rec0.reasons[0]).toBe('You list 2 of the 4 skills in the posting');
   });
 });
+
+describe('settings', () => {
+  it('stores current time-zone names even when the browser reports an old alias', async () => {
+    // Chrome in India reports "Asia/Calcutta"; databases without the tz "backward" links reject it.
+    const s = await env.api(bob.token).patch('/api/settings', { timezone: 'Asia/Calcutta' }).expect(200);
+    expect(s.body.timezone).toBe('Asia/Kolkata');
+    // Date maths in SQL works with the stored zone.
+    await env.api(bob.token).get('/api/analytics/timeseries?range=7d').expect(200);
+    await env.api(bob.token).get('/api/me').expect(200);
+    const bad = await env.api(bob.token).patch('/api/settings', { timezone: 'Mars/Olympus_Mons' }).expect(400);
+    expect(bad.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});

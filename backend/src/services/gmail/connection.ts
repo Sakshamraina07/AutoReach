@@ -69,7 +69,7 @@ export async function connectionStatus(deps: Deps, tx: Tx, userId: string): Prom
 }
 
 /** Step 1 of the OAuth flow: single-use state with a PKCE verifier. */
-export async function createAuthorization(deps: Deps, tx: Tx, userId: string, returnTo: 'dashboard' | 'extension', loginHint?: string | null) {
+export async function createAuthorization(deps: Deps, tx: Tx, userId: string, returnTo: 'dashboard' | 'onboarding' | 'extension', loginHint?: string | null) {
   const cfg = oauthConfig(deps);
   key(deps);
   const state = randomToken(32);

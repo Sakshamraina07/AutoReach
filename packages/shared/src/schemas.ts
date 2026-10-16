@@ -15,7 +15,7 @@ import {
   TONES,
 } from './enums.js';
 import { isValidEmail } from './email.js';
-import { isValidTimezone } from './dates.js';
+import { canonicalTimezone, isValidTimezone } from './dates.js';
 
 /* ------------------------------------------------------------------ */
 /* Primitives                                                          */
@@ -128,7 +128,7 @@ export const profilePatchSchema = z.object(profileFields).partial();
 
 export const settingsUpdateSchema = z
   .object({
-    timezone: z.string().refine(isValidTimezone, { message: 'Unknown timezone' }),
+    timezone: z.string().max(64).transform(canonicalTimezone).refine(isValidTimezone, { message: 'Unknown timezone' }),
     tracking_enabled: z.boolean(),
     tracking_retention_days: z.number().int().min(7).max(730),
     followup_delay_business_days: z.number().int().min(1).max(30),
@@ -417,7 +417,7 @@ export const analyticsRangeSchema = z.object({
 });
 
 export const gmailAuthorizeSchema = z.object({
-  return_to: z.enum(['dashboard', 'extension']).default('dashboard'),
+  return_to: z.enum(['dashboard', 'onboarding', 'extension']).default('dashboard'),
 });
 
 export const selfViewSchema = z.object({

@@ -59,7 +59,16 @@ export function heuristicExtract(text: string): Partial<ProfileUpdate> {
   const degree = edu.match(DEGREE_RE)?.[0]?.trim();
   if (degree) out.degree = degree.replace(/\s{2,}/g, ' ').slice(0, 120);
   const uni = edu.split('\n').find((l) => /(university|institute|college|iit|nit|iiit|school of)/i.test(l));
-  if (uni) out.university = uni.replace(/\s*[|,–-]\s*\d{4}.*$/, '').slice(0, 160);
+  if (uni) {
+    // "B.Tech IT, Example College, 2026" → "Example College": drop the degree, labels and trailing dates.
+    const degreeInLine = uni.match(DEGREE_RE)?.[0];
+    const cleaned = (degreeInLine ? uni.replace(degreeInLine, '') : uni)
+      .replace(/^\s*education\s*:?\s*/i, '')
+      .replace(/\s*[|,–-]?\s*(?:\(?\s*(?:19|20)\d{2}\b.*)$/, '')
+      .replace(/^[\s|,;–-]+|[\s|,;–-]+$/g, '')
+      .trim();
+    if (cleaned) out.university = cleaned.slice(0, 160);
+  }
   const years = [...edu.matchAll(/\b(20[1-4]\d)\b/g)].map((m) => Number(m[1]));
   if (years.length) out.graduation_year = Math.max(...years);
   const skills = extractSkills(text);

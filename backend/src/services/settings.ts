@@ -25,6 +25,11 @@ export async function updateSettings(tx: Tx, userId: string, patch: SettingsUpda
   if (next.send_spacing_min_seconds > next.send_spacing_max_seconds) {
     throw badRequest('Minimum spacing must not exceed maximum spacing.');
   }
+  if (patch.timezone !== undefined) {
+    // The database evaluates dates in this zone, so it must know the name too (some tz databases omit old aliases).
+    const known = await tx.maybeOne(`SELECT 1 FROM pg_timezone_names WHERE name = $1`, [patch.timezone]);
+    if (!known) throw badRequest(`The time zone "${patch.timezone}" isn't recognised. Choose another name for the same zone.`, undefined, 'UNKNOWN_TIMEZONE');
+  }
   if (patch.default_resume_id) {
     const r = await tx.maybeOne(`SELECT 1 FROM resumes WHERE id = $1 AND user_id = $2`, [patch.default_resume_id, userId]);
     if (!r) throw badRequest('Selected résumé does not exist.');

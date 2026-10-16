@@ -139,6 +139,8 @@ export function outreachRoutes(deps: Deps, limiters: { ai: RequestHandler; send:
     const id = idParam(req);
     const opts = parse(z.object({ use_template: z.boolean().default(false) }), req.body ?? {});
     const result = await deps.db.withUser(uid, async (tx) => {
+      // Serialise concurrent requests (double click, React strict-mode effects) so only one draft is created.
+      await tx.query(`SELECT 1 FROM follow_ups WHERE id = $1 AND user_id = $2 FOR UPDATE`, [id, uid]);
       const s = await getSettings(tx, uid);
       const fu = await getFollowUp(tx, uid, id, s.timezone, deps.now());
       if (fu.status !== 'pending') throw conflict('FOLLOWUP_CLOSED', 'This follow-up is no longer pending.');

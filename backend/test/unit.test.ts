@@ -111,11 +111,17 @@ describe('résumé heuristics', () => {
     const r = heuristicExtract('Asha Verma\nasha.v@mail.dev\nEducation\nB.E. Information Technology, Example College of Engineering, 2025\nProjects\nPayTrack\n- Expense tracker in Flutter and Firebase serving 300 users');
     expect(r.full_name).toBe('Asha Verma');
     expect(r.degree).toMatch(/^B\.E\. Information Technology/);
-    expect(r.university).toBe('B.E. Information Technology, Example College of Engineering');
+    expect(r.university).toBe('Example College of Engineering');
     expect(r.graduation_year).toBe(2025);
     expect(r.projects?.[0]).toMatchObject({ name: 'PayTrack', technologies: ['Flutter', 'Firebase'] });
     expect(r.projects?.[0]?.achievements[0]).toContain('300 users');
     expect(r.links?.github).toBeNull();
+  });
+
+  it('separates the college from the degree and dates', () => {
+    expect(heuristicExtract('Ravi Shah\nEducation\nIndian Institute of Technology, Bombay | 2021 - 2025').university).toBe('Indian Institute of Technology, Bombay');
+    expect(heuristicExtract('Ravi Shah\nEducation: B.Tech Computer Science, Example University, 2026').university).toBe('Example University');
+    expect(heuristicExtract('Ravi Shah\nEducation\nExample Institute of Technology (2022-2026)').university).toBe('Example Institute of Technology');
   });
 });
 

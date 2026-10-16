@@ -160,6 +160,14 @@ describe('quality checks', () => {
     );
   });
 
+  it('recognises résumé mentions with accents and punctuation', () => {
+    const codes = (body: string) => runQualityChecks({ ...base, body }).map((x) => x.code);
+    expect(codes(base.body)).not.toContain('ATTACHMENT_NOT_MENTIONED');
+    expect(codes("Hi Meera,\n\nI've attached my résumé.\n\nThanks,\nSam")).not.toContain('ATTACHMENT_NOT_MENTIONED');
+    expect(codes('Hi Meera,\n\nMy CV is attached.\n\nThanks,\nSam')).not.toContain('ATTACHMENT_NOT_MENTIONED');
+    expect(codes('Hi Meera,\n\nI would love to join Northwind.\n\nThanks,\nSam')).toContain('ATTACHMENT_NOT_MENTIONED');
+  });
+
   it('extracts claim numbers but ignores years, small counts and phones', () => {
     expect(extractClaimNumbers('Graduating in 2027 with 3 projects, call +91 98765 43210; served 1,200 users and 40% faster')).toEqual([
       '1,200users',
@@ -215,5 +223,17 @@ describe('profile completeness', () => {
     const p = profileCompleteness({ full_name: 'Sam', skills: ['a', 'b', 'c', 'd', 'e'] }, { hasResume: true, gmailConnected: true });
     expect(p.percent).toBeGreaterThan(30);
     expect(p.items.find((i) => i.key === 'projects')?.done).toBe(false);
+  });
+});
+
+describe('time zones', () => {
+  it('maps old aliases to current IANA names and leaves current names alone', async () => {
+    const { canonicalTimezone, isValidTimezone } = await import('./dates.js');
+    expect(canonicalTimezone('Asia/Calcutta')).toBe('Asia/Kolkata');
+    expect(canonicalTimezone('Europe/Kiev')).toBe('Europe/Kyiv');
+    expect(canonicalTimezone(' US/Eastern ')).toBe('America/New_York');
+    expect(canonicalTimezone('Asia/Kolkata')).toBe('Asia/Kolkata');
+    expect(canonicalTimezone('Not/AZone')).toBe('Not/AZone');
+    expect(isValidTimezone(canonicalTimezone('Asia/Calcutta'))).toBe(true);
   });
 });

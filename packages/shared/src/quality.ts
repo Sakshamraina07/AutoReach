@@ -61,7 +61,8 @@ export const GENERIC_PHRASES: readonly string[] = [
 const FLATTERY = /\b(dream company|huge fan|biggest fan|world[-\s]class|revolutionary|industry[-\s]leading|the best company|amazing company|incredible company|greatly admire)\b/i;
 const CONNECTION_CLAIMS =
   /\b(referred (me|by)|referral from|on the recommendation of|we met|met you|nice meeting you|mutual (friend|connection)|as (we )?discussed|our (recent )?(call|conversation|chat)|you (asked|suggested) (me|that))\b/i;
-const RESUME_MENTION = /\b(r[ée]sum[ée]|cv|curriculum vitae)\b/i;
+// \b is ASCII-only in JS, so "résumé." would not match; use Unicode-aware lookarounds.
+const RESUME_MENTION = /(?<![\p{L}\p{N}])(r[ée]sum[ée]s?|cv|curriculum vitae)(?![\p{L}\p{N}])/iu;
 const GREETING_RE = /^\s*(?:hi|hello|dear|hey|good (?:morning|afternoon|evening))\s+(?:(?:mr|mrs|ms|dr|prof)\.?\s+)?([A-Z][\p{L}'-]+)/iu;
 const NEUTRAL_GREETINGS = new Set(['team', 'there', 'hiring', 'recruiter', 'recruiting', 'sir', 'madam', 'all', 'everyone']);
 

@@ -86,6 +86,7 @@ export function publicRoutes(deps: Deps, limiters: { pixel: RequestHandler; oaut
       if (result.returnTo === 'extension') {
         return res.type('html').send(resultPage('Gmail connected', `AutoReach can now send from ${result.email}. You can close this tab.`, true));
       }
+      if (result.returnTo === 'onboarding') return res.redirect(303, `${deps.config.dashboardUrl}/onboarding?gmail=connected`);
       return res.redirect(303, `${dashboard}&gmail=connected`);
     } catch (err) {
       const message = err instanceof AppError ? err.message : 'Something went wrong while connecting Gmail.';
