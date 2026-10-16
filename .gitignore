@@ -1,4 +1,22 @@
 node_modules/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
 .env
+.env.*
+!.env.example
+*.local
 .DS_Store
-AutoReach.zip
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Build artefacts and packaged extensions are produced by CI/locally, never committed
+*.zip
+!website/public/.gitkeep
+
+# Local data used by development storage driver and test databases
+backend/.data/
+.tmp/
