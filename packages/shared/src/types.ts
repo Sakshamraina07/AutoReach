@@ -345,3 +345,10 @@ export interface Recommendation {
   days_since_discovered: number | null;
   deadline: string | null;
 }
+
+/** POST /api/recruiters/lookup — one entry per requested address (used by the Gmail assist). */
+export interface RecruiterLookupResult {
+  email: string;
+  recruiter: RecruiterSummary | null;
+  messages: MessageSummary[];
+}

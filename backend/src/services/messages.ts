@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  attachmentDisplayName,
   findPlaceholders,
   hasBlockingFindings,
   isValidEmail,
@@ -482,7 +483,7 @@ export async function deliver(deps: Deps, userId: string, id: string): Promise<S
     else if (!/^re:/i.test(subject)) subject = `Re: ${base}`;
   }
   const pixelUrl = msg.tracking_enabled && msg.tracking_token && deps.config.tracking.configured ? `${deps.config.apiPublicUrl}/t/${msg.tracking_token}.gif` : null;
-  const fileName = settings.attachment_filename?.trim() ? `${settings.attachment_filename.trim().replace(/\.pdf$/i, '')}.pdf` : attachment?.fileName;
+  const fileName = attachment ? attachmentDisplayName(attachment.fileName, settings.attachment_filename) : undefined;
   const references = [original?.rfc_message_id, parent?.rfc_message_id].filter((x, i, a): x is string => !!x && a.indexOf(x) === i);
   let raw: string;
   try {

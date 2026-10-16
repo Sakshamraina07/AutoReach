@@ -1,0 +1,83 @@
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Same tokens as the dashboard. Follows the system light/dark setting. */
+:root {
+  --bg: 15 20 28;
+  --surface: 21 27 37;
+  --raised: 27 34 48;
+  --line: 38 48 66;
+  --ink: 230 234 242;
+  --muted: 154 165 184;
+  --faint: 107 118 137;
+  --accent: 124 156 255;
+  --accent-ink: 12 18 34;
+  --sent: 143 179 217;
+  --opened: 183 156 255;
+  --replied: 95 211 160;
+  --warn: 242 176 94;
+  --danger: 242 116 116;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: 246 247 249;
+    --surface: 255 255 255;
+    --raised: 241 243 247;
+    --line: 221 226 234;
+    --ink: 23 32 49;
+    --muted: 84 97 119;
+    --faint: 125 136 155;
+    --accent: 61 91 217;
+    --accent-ink: 255 255 255;
+    --sent: 62 104 148;
+    --opened: 116 82 206;
+    --replied: 22 140 92;
+    --warn: 176 104 14;
+    --danger: 200 54 54;
+    color-scheme: light;
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-bg font-sans text-sm text-ink antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  a {
+    @apply text-accent hover:underline;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded border border-line bg-bg px-2.5 py-1.5 text-sm text-ink placeholder:text-faint;
+    @apply focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+  .panel {
+    @apply rounded-md border border-line bg-surface;
+  }
+}

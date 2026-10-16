@@ -1,5 +1,6 @@
 import {
   AI_REFINE_ACTION_LABELS,
+  attachmentDisplayName,
   OUTREACH_GOAL_LABELS,
   OUTREACH_GOALS,
   TONE_LABELS,
@@ -461,7 +462,7 @@ export default function Composer() {
           recruiter={r}
           subject={subject}
           body={body}
-          attachment={selectedResume ? `${selectedResume.file_name} (${fmtBytes(selectedResume.size_bytes)})` : null}
+          attachment={selectedResume ? `${attachmentDisplayName(selectedResume.file_name, me.data?.settings.attachment_filename)} (${fmtBytes(selectedResume.size_bytes)})` : null}
           tracking={!!tracking}
           fromAccount={me.data?.gmail.account_email ?? null}
           gmailProblem={gmailProblem(me.data?.gmail)}

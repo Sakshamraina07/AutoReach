@@ -20,3 +20,4 @@ coverage/
 # Local data used by development storage driver and test databases
 backend/.data/
 .tmp/
+extension/release/

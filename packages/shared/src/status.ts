@@ -84,3 +84,24 @@ export function deriveTrackingDisplay(m: Pick<MessageStatusInput, 'send_status' 
   if (m.first_open_at) return { key: 'open_detected', label: 'Open detected' };
   return { key: 'not_detected', label: 'No open detected' };
 }
+
+/**
+ * Why AutoReach can't send right now, if the Gmail connection isn't usable.
+ * Clients use it to explain and disable Send; the server checks again anyway.
+ */
+export function gmailSendBlocker(
+  g: { configured: boolean; connected: boolean; status: string | null; can_send: boolean } | null | undefined,
+): { message: string; action: 'connect' | 'reconnect' | null } | null {
+  if (!g) return null;
+  if (!g.configured) return { message: "Gmail sending isn't set up on this server yet, so this email can't be sent. Save it as a draft for now.", action: null };
+  if (!g.connected) return { message: 'Connect your Gmail account to send.', action: 'connect' };
+  if (g.status === 'needs_reauth' || g.status === 'revoked') return { message: 'Gmail access expired or was revoked. Reconnect to send.', action: 'reconnect' };
+  if (!g.can_send) return { message: "AutoReach doesn't have permission to send from your Gmail. Reconnect and allow sending.", action: 'reconnect' };
+  return null;
+}
+
+/** The attachment file name the recipient sees: the Settings override (always .pdf) or the uploaded file's name. */
+export function attachmentDisplayName(fileName: string, override: string | null | undefined): string {
+  const o = override?.trim();
+  return o ? `${o.replace(/\.pdf$/i, '')}.pdf` : fileName;
+}

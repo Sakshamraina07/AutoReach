@@ -104,6 +104,22 @@ describe('sending', () => {
     expect(new Date(recruiter.follow_ups[0].due_at).getUTCHours()).toBe(10);
   });
 
+  it('names the attachment from Settings when set, keeping the file intact', async () => {
+    await env.api(user.token).patch('/api/settings', { attachment_filename: 'Sam Kumar Resume.pdf' }).expect(200);
+    try {
+      const rec = await newRecruiter('naming@northwind-labs.dev');
+      const draft = await newDraft(rec.id, { resume_id: resumeB.id });
+      const res = await env.api(user.token).post(`/api/messages/${draft.id}/send`).set('Idempotency-Key', key()).send({ confirm_quality_override: true }).expect(200);
+      expect(res.body.outcome).toBe('sent');
+      expect(res.body.message.attachment.file_name).toBe('Sam Kumar Resume.pdf');
+      const mime = parseMime(env.google.sent.at(-1)!.raw);
+      expect(mime.attachments[0]!.headers).toContain('filename="Sam Kumar Resume.pdf"');
+      expect(sha(mime.attachments[0]!.content)).toBe(sha(pdfB));
+    } finally {
+      await env.api(user.token).patch('/api/settings', { attachment_filename: null }).expect(200);
+    }
+  });
+
   it('prevents duplicate outreach to the same recruiter unless explicitly confirmed', async () => {
     const rec = await newRecruiter('dup@northwind-labs.dev');
     const d1 = await newDraft(rec.id);
