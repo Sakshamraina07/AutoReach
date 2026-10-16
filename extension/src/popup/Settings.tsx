@@ -42,7 +42,7 @@ export function SettingsView({ auth, onDone, onSignedOut }: { auth: AuthState; o
             }}
             className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full border transition-colors ${assist ? 'border-accent bg-accent' : 'border-line bg-raised'}`}
           >
-            <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform ${assist ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+            <span className={`absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform ${assist ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
           </button>
         </div>
         <div className="space-y-1 border-t border-line pt-3 text-muted">

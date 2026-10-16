@@ -269,7 +269,7 @@ export default function Composer() {
                 <option value="">No saved posting</option>
                 {opps.data?.items.map((o) => (
                   <option key={o.id} value={o.id}>
-                    {o.title} — {o.company}
+                    {o.title} at {o.company}
                   </option>
                 ))}
               </select>
@@ -289,7 +289,7 @@ export default function Composer() {
                       <option key={x.id} value={x.id} disabled={x.do_not_contact}>
                         {linkedRecruiterIds.has(x.id) ? '★ ' : ''}
                         {x.full_name ?? x.email}
-                        {x.company ? ` — ${x.company}` : ''}
+                        {x.company ? `, ${x.company}` : ''}
                         {x.do_not_contact ? ' (do not contact)' : ''}
                       </option>
                     ))}

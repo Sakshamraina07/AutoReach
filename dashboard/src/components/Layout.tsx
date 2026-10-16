@@ -119,7 +119,7 @@ export function Layout() {
           aria-pressed={paused}
         >
           {paused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
-          {paused ? 'Sending paused — resume' : 'Pause all sending'}
+          {paused ? 'Sending paused. Resume' : 'Pause all sending'}
         </button>
         <div className="flex items-center gap-1 px-2">
           <span className="min-w-0 flex-1 truncate text-xs text-faint" title={email ?? ''}>
