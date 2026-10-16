@@ -6,7 +6,10 @@ export const GMAIL_METADATA_SCOPE = 'https://www.googleapis.com/auth/gmail.metad
 /** Broader scopes that also satisfy reply detection if a user granted them elsewhere. */
 export const READ_CAPABLE_SCOPES = [GMAIL_METADATA_SCOPE, 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.modify', 'https://mail.google.com/'];
 export const SEND_CAPABLE_SCOPES = [GMAIL_SEND_SCOPE, 'https://www.googleapis.com/auth/gmail.compose', 'https://www.googleapis.com/auth/gmail.modify', 'https://mail.google.com/'];
-export const REQUESTED_SCOPES = ['openid', 'email', GMAIL_SEND_SCOPE, GMAIL_METADATA_SCOPE];
+/** Scopes requested on the consent screen. gmail.metadata (a Google "restricted" scope) only when reply detection is on. */
+export function requestedScopes(replyDetection: boolean): string[] {
+  return replyDetection ? ['openid', 'email', GMAIL_SEND_SCOPE, GMAIL_METADATA_SCOPE] : ['openid', 'email', GMAIL_SEND_SCOPE];
+}
 
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -17,6 +20,8 @@ export interface OAuthClientConfig {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  /** Request gmail.metadata for reply detection (default true). */
+  replyDetection?: boolean;
 }
 
 export class OAuthGrantError extends Error {
@@ -34,7 +39,7 @@ export function buildAuthorizeUrl(cfg: OAuthClientConfig, state: string, codeCha
   u.searchParams.set('client_id', cfg.clientId);
   u.searchParams.set('redirect_uri', cfg.redirectUri);
   u.searchParams.set('response_type', 'code');
-  u.searchParams.set('scope', REQUESTED_SCOPES.join(' '));
+  u.searchParams.set('scope', requestedScopes(cfg.replyDetection !== false).join(' '));
   u.searchParams.set('access_type', 'offline');
   u.searchParams.set('prompt', 'consent');
   u.searchParams.set('include_granted_scopes', 'true');

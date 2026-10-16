@@ -100,6 +100,8 @@ export interface GmailConnectionStatus {
   status: 'active' | 'needs_reauth' | 'revoked' | 'legacy_import_pending' | null;
   can_send: boolean;
   can_detect_replies: boolean;
+  /** False when the server is set up to send only (no gmail.metadata permission requested). */
+  reply_detection_enabled: boolean;
   scopes: string[];
   last_sync_at: string | null;
   sync_error: string | null;

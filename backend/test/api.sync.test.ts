@@ -283,6 +283,21 @@ describe('Gmail OAuth connection', () => {
     expect(await env.sql(`SELECT 1 FROM oauth_connections WHERE user_id = $1`, [u.id])).toHaveLength(0);
   });
 
+  it('can be set up to send only, without the restricted header permission', async () => {
+    const gmailCfg = env.deps.config.gmail as { replyDetection: boolean };
+    gmailCfg.replyDetection = false;
+    try {
+      const auth = (await env.api(user.token).post('/api/integrations/gmail/authorize', {}).expect(200)).body;
+      expect(new URL(auth.url).searchParams.get('scope')!.split(' ').sort()).toEqual(['email', 'https://www.googleapis.com/auth/gmail.send', 'openid']);
+      const me = (await env.api(user.token).get('/api/me').expect(200)).body;
+      expect(me.gmail).toMatchObject({ reply_detection_enabled: false, can_detect_replies: false, can_send: true });
+      expect(await sync()).toMatchObject({ status: 'skipped', reason: 'REPLY_DETECTION_DISABLED' });
+    } finally {
+      gmailCfg.replyDetection = true;
+    }
+    expect((await env.api(user.token).get('/api/me').expect(200)).body.gmail).toMatchObject({ reply_detection_enabled: true, can_detect_replies: true });
+  });
+
   it('returns to the onboarding wizard when the connection was started there', async () => {
     const u = await env.newUser('onboard-connect@student-mail.dev');
     const auth = (await env.api(u.token).post('/api/integrations/gmail/authorize', { return_to: 'onboarding' }).expect(200)).body;

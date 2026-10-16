@@ -83,7 +83,7 @@ const Privacy = () => {
               <h2>2. Google permissions we request, and why</h2>
               <div className="highlight-box">
                 <p>
-                  <strong>We request <code>gmail.send</code> and <code>gmail.metadata</code>, plus your basic identity (<code>openid</code>, <code>email</code>).</strong> We do not request permission to read the content of your emails, and we cannot read, modify or delete your messages.
+                  <strong>We request <code>gmail.send</code> and <code>gmail.metadata</code>, plus your basic identity (<code>openid</code>, <code>email</code>).</strong> (A server set up without reply detection requests only <code>gmail.send</code> and identity.) We do not request permission to read the content of your emails, and we cannot read, modify or delete your messages.
                 </p>
               </div>
               <ul>

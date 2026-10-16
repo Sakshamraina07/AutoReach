@@ -2,7 +2,7 @@
   "name": "autoreach",
   "private": true,
   "version": "2.0.0",
-  "description": "AutoReach 2.0 — personal AI job-outreach workspace: recruiter CRM, opportunity tracker, AI-assisted Gmail outreach, reply detection and follow-ups.",
+  "description": "AutoReach 2.0 \u2014 personal AI job-outreach workspace: recruiter CRM, opportunity tracker, AI-assisted Gmail outreach, reply detection and follow-ups.",
   "type": "module",
   "workspaces": [
     "packages/shared",
@@ -11,7 +11,7 @@
     "extension"
   ],
   "engines": {
-    "node": ">=20.11"
+    "node": ">=22.13"
   },
   "scripts": {
     "build:shared": "npm run build -w @autoreach/shared",
@@ -30,6 +30,7 @@
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
+    "jsdom": "^29.1.1",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2"
   }

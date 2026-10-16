@@ -37,7 +37,7 @@ interface ConnectionRow {
 function oauthConfig(deps: Deps): OAuthClientConfig {
   const g = deps.config.gmail;
   if (!g.configured || !g.clientId || !g.clientSecret) throw serviceUnavailable('GMAIL_NOT_CONFIGURED', g.reason ?? 'Gmail is not configured on the server.');
-  return { clientId: g.clientId, clientSecret: g.clientSecret, redirectUri: g.redirectUri };
+  return { clientId: g.clientId, clientSecret: g.clientSecret, redirectUri: g.redirectUri, replyDetection: g.replyDetection };
 }
 
 function key(deps: Deps): Buffer {
@@ -61,7 +61,8 @@ export async function connectionStatus(deps: Deps, tx: Tx, userId: string): Prom
     account_email: row?.account_email ?? null,
     status: row ? row.status : legacyPending ? 'legacy_import_pending' : null,
     can_send: connected && row!.status === 'active' && hasAnyScope(row!.scopes, SEND_CAPABLE_SCOPES),
-    can_detect_replies: connected && row!.status === 'active' && hasAnyScope(row!.scopes, READ_CAPABLE_SCOPES),
+    can_detect_replies: deps.config.gmail.replyDetection && connected && row!.status === 'active' && hasAnyScope(row!.scopes, READ_CAPABLE_SCOPES),
+    reply_detection_enabled: deps.config.gmail.replyDetection,
     scopes: row?.scopes ?? [],
     last_sync_at: row?.last_sync_at ?? null,
     sync_error: row?.sync_error ?? row?.last_error ?? null,
@@ -171,6 +172,9 @@ export async function getAuthorizedGmail(deps: Deps, userId: string, purpose: 's
   if (row.status !== 'active') throw new AppError(409, 'GMAIL_REAUTH_REQUIRED', 'Gmail access expired or was revoked. Reconnect Gmail in Settings.');
   if (purpose === 'send' && !hasAnyScope(row.scopes, SEND_CAPABLE_SCOPES)) {
     throw new AppError(409, 'GMAIL_SCOPE_MISSING', 'AutoReach is not allowed to send from this Gmail account. Reconnect Gmail and allow sending.');
+  }
+  if (purpose === 'read' && !deps.config.gmail.replyDetection) {
+    throw new AppError(409, 'REPLY_DETECTION_DISABLED', 'Reply detection is turned off on this server (GMAIL_REPLY_DETECTION=false). Mark replies by hand on each email.');
   }
   if (purpose === 'read' && !hasAnyScope(row.scopes, READ_CAPABLE_SCOPES)) {
     throw new AppError(409, 'GMAIL_SCOPE_MISSING', 'Reply detection needs the Gmail metadata permission. Reconnect Gmail to enable it.');

@@ -339,6 +339,7 @@ async function saveCursor(deps: Deps, userId: string, historyId: string, syncErr
 
 /** Worker: sync every active connection that can read metadata, at most every 3 minutes. */
 export async function syncAllReplies(deps: Deps): Promise<number> {
+  if (!deps.config.gmail.configured || !deps.config.gmail.replyDetection) return 0;
   const users = await deps.db.withSystem((tx) =>
     tx.many<{ user_id: string }>(
       `SELECT user_id FROM oauth_connections

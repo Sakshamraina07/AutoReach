@@ -17,6 +17,7 @@ const gmail = (over: Partial<GmailConnectionStatus> = {}): GmailConnectionStatus
   status: 'active',
   can_send: true,
   can_detect_replies: true,
+  reply_detection_enabled: true,
   scopes: [],
   last_sync_at: null,
   sync_error: null,

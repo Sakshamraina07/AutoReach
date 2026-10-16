@@ -259,7 +259,11 @@ function GmailStep() {
   return (
     <div className="space-y-4 text-sm">
       <ul className="space-y-1.5 text-muted">
-        <li>Google will ask you to allow two things: sending email, and reading message headers (sender, subject, date) so AutoReach can tell when someone replies.</li>
+        <li>
+          {g.reply_detection_enabled
+            ? 'Google will ask you to allow two things: sending email, and reading message headers (sender, subject, date) so AutoReach can tell when someone replies.'
+            : 'Google will ask you to allow AutoReach to send email for you.'}
+        </li>
         <li>AutoReach never reads the content of your emails and never sends anything you haven't approved.</li>
         <li>You can disconnect at any time; that also revokes access at Google.</li>
       </ul>

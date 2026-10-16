@@ -57,6 +57,7 @@ const EnvSchema = z.object({
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(45000),
 
   HUNTER_API_KEY: optionalString,
+  GMAIL_REPLY_DETECTION: bool(true),
 
   WORKERS_ENABLED: bool(true),
   ENABLE_DEV_LOGIN: bool(false),
@@ -95,6 +96,8 @@ export interface AppConfig {
     clientSecret?: string;
     redirectUri: string;
     reason?: string;
+    /** Whether to request gmail.metadata and run reply detection. */
+    replyDetection: boolean;
   };
   tokenEncryptionKey?: Buffer;
   ai: {
@@ -227,6 +230,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       clientSecret: e.GOOGLE_CLIENT_SECRET,
       redirectUri: `${e.API_PUBLIC_URL}/api/integrations/gmail/callback`,
       reason: gmailReason,
+      replyDetection: e.GMAIL_REPLY_DETECTION,
     },
     tokenEncryptionKey: tokenKey,
     ai: {

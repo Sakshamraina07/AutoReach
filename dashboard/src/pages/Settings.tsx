@@ -536,9 +536,9 @@ function GmailSection() {
             {g.status === 'legacy_import_pending' && <p className="rounded border border-warn/40 bg-warn/5 p-3">Your v1 Gmail connection was carried over. Reconnect once to grant reply detection.</p>}
             <dl className="grid grid-cols-[150px_1fr] gap-y-1.5">
               <dt className="text-muted">Can send</dt>
-              <dd>{g.can_send ? 'Yes' : 'No — reconnect and allow sending'}</dd>
+              <dd>{g.can_send ? 'Yes' : 'No. Reconnect and allow sending.'}</dd>
               <dt className="text-muted">Can detect replies</dt>
-              <dd>{g.can_detect_replies ? 'Yes' : 'No — reconnect and allow reading message headers'}</dd>
+              <dd>{!g.reply_detection_enabled ? 'Turned off on this server. Mark replies on each email.' : g.can_detect_replies ? 'Yes' : 'No. Reconnect and allow reading message headers.'}</dd>
               <dt className="text-muted">Last reply check</dt>
               <dd>{g.last_sync_at ? fmtDateTime(g.last_sync_at) : 'Not yet'}</dd>
               {g.sync_error && (
@@ -554,9 +554,11 @@ function GmailSection() {
                   Reconnect Gmail
                 </Button>
               )}
-              <Button icon={<RefreshCw className="h-4 w-4" />} loading={busy === 'sync'} disabled={!g.can_detect_replies} onClick={sync}>
-                Check for replies now
-              </Button>
+              {g.reply_detection_enabled && (
+                <Button icon={<RefreshCw className="h-4 w-4" />} loading={busy === 'sync'} disabled={!g.can_detect_replies} onClick={sync}>
+                  Check for replies now
+                </Button>
+              )}
               <Button variant="ghost" onClick={() => setDisconnecting(true)}>
                 Disconnect
               </Button>
@@ -569,16 +571,22 @@ function GmailSection() {
           <li>
             <span className="text-ink">Send email on your behalf</span> (gmail.send). Used only when you press Send, or for queued emails and follow-ups you approved.
           </li>
-          <li>
-            <span className="text-ink">Read message headers, not bodies</span> (gmail.metadata). Used to notice replies, bounces and out-of-office messages in threads you started from AutoReach. AutoReach cannot read the content of your emails.
-          </li>
+          {g.reply_detection_enabled ? (
+            <li>
+              <span className="text-ink">Read message headers, not bodies</span> (gmail.metadata). Used to notice replies, bounces and out-of-office messages in threads you started from AutoReach. AutoReach cannot read the content of your emails.
+            </li>
+          ) : (
+            <li>
+              <span className="text-ink">No access to your messages.</span> This server doesn't ask for header access, so replies aren't detected automatically; mark them on each email.
+            </li>
+          )}
           <li>
             <span className="text-ink">Your email address</span> (openid, email). Used to show which account is connected.
           </li>
         </ul>
         <p className="mt-3 text-xs text-faint">Access tokens are encrypted at rest. Disconnecting revokes access at Google too. You can also remove access any time at myaccount.google.com/permissions.</p>
       </Panel>
-      {s.draft && (
+      {s.draft && g.reply_detection_enabled && (
         <Panel title="Reply detection">
           <Toggle
             label="Also notice replies that start a new thread"
