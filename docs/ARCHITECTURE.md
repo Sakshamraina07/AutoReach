@@ -117,9 +117,11 @@ lucide icons. Auth through `supabase-js` (Google OAuth, PKCE). In local developm
 | Background service worker | Auth token refresh, API calls on behalf of content scripts (so CORS is between the API and the extension origin only), badge count of due follow-ups (`alarms`) |
 
 Permissions: `storage`, `identity`, `activeTab`, `scripting`, `sidePanel`, `alarms`;
-host permission only for `https://mail.google.com/*`. Removed: `tabs`, LinkedIn/Google API
-host permissions, the automatic LinkedIn content script, and the `<all_urls>`
-`web_accessible_resources` exposure.
+host access only to the configured API and Supabase origins (generated into the manifest at
+build time) and a content script on `https://mail.google.com/*`. Removed: `tabs`,
+LinkedIn/Google API host permissions, the automatic LinkedIn content script, and the
+`<all_urls>` `web_accessible_resources` exposure. The extension is built with plain Vite
+builds (`extension/scripts/build.mjs`) instead of an extension bundler plugin.
 
 ## 4. Key flows
 
@@ -305,4 +307,4 @@ UI (e.g. "AI drafting is not configured on the server"). See `.env.example` and
   real API in dev-login mode produces the screenshots in `docs/screenshots/`.
 - External services (Gmail, Google OAuth, AI providers, Supabase Storage) are exercised through
   their HTTP clients with injected transports in tests. Real-credential calls are **not** part of
-  the automated suite and are listed as manual verification steps in `docs/SETUP.md`.
+  the automated suite and are listed as manual verification steps in `docs/DEPLOYMENT.md` (§8).

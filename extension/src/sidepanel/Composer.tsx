@@ -310,6 +310,11 @@ export function Composer({ prefill }: { prefill: ComposePrefill }) {
             <Button variant="primary" size="sm" icon={<Sparkles className="h-3.5 w-3.5" />} loading={busy === 'generate'} disabled={!!busy} onClick={() => void generate()}>
               {me.data.ai.configured ? (body ? 'Regenerate' : 'Generate draft') : 'Draft from template'}
             </Button>
+            {me.data.ai.configured && (
+              <Button size="sm" variant="ghost" loading={busy === 'template'} disabled={!!busy} onClick={() => void generate('template')}>
+                Use my template
+              </Button>
+            )}
             {me.data.ai.configured &&
               body &&
               (['concise', 'personalize', 'emphasize_projects'] as const).map((a) => (

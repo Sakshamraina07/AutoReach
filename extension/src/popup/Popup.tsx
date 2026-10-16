@@ -1,7 +1,7 @@
 import type { FollowUp, MeResponse, MessageSummary, Paginated } from '@autoreach/shared';
 import { Bell, ExternalLink, FilePlus2, LogOut, PauseCircle, PenSquare, PlayCircle, Settings2, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { authCall, api } from '../lib/client';
+import { api, authCall, ExtensionApiError } from '../lib/client';
 import { config, dashboardLink, supabaseConfigured } from '../lib/config';
 import { useLoad } from '../lib/hooks';
 import type { AuthState } from '../lib/protocol';
@@ -114,6 +114,13 @@ function Home({ auth, onView, onSignedOut }: { auth: AuthState; onView: (v: View
   const [actionError, setActionError] = useState<unknown>(null);
   const s = me.data?.settings;
   const g = me.data?.gmail;
+
+  // An expired session that couldn't be refreshed: go back to the sign-in screen.
+  useEffect(() => {
+    if (me.error instanceof ExtensionApiError && ['SESSION_EXPIRED', 'SIGNED_OUT'].includes(me.error.code)) {
+      void authCall({ type: 'auth:signOut' }).then(onSignedOut);
+    }
+  }, [me.error, onSignedOut]);
 
   async function togglePause() {
     if (!s) return;

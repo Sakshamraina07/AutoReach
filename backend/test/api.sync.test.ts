@@ -226,6 +226,16 @@ describe('follow-ups', () => {
     expect(dismissed.status).toBe('dismissed');
   });
 
+  it('ends reminders when the user marks the conversation as answered or closed by hand', async () => {
+    const { rec } = await sendTo('manual-status@woodgrove-talent.dev', 'Manual Status', 'Woodgrove');
+    const pending = async () => (await env.sql(`SELECT 1 FROM follow_ups WHERE recruiter_id = $1 AND status = 'pending'`, [rec.id])).length;
+    expect(await pending()).toBe(1);
+    await env.api(user.token).patch(`/api/recruiters/${rec.id}`, { outreach_status: 'not_interested' }).expect(200);
+    expect(await pending()).toBe(0);
+    const [fu] = await env.sql<{ cancel_reason: string }>(`SELECT cancel_reason FROM follow_ups WHERE recruiter_id = $1`, [rec.id]);
+    expect(fu!.cancel_reason).toBe('not_interested');
+  });
+
   it('auto-sends only when explicitly enabled, from the user’s own template, within the cap', async () => {
     const { processFollowUpAutoSend } = await import('../src/services/followupAutosend.js');
     const { processSendQueue } = await import('../src/services/messages.js');

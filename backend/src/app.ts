@@ -92,7 +92,7 @@ export function createApp(deps: Deps): Express {
   api.use(requireAuth(deps));
   api.use(limiters.api);
   api.use(ensureUserRows(deps));
-  api.use(coreRoutes(deps));
+  api.use(coreRoutes(deps, limiters));
   api.use(crmRoutes(deps));
   api.use(outreachRoutes(deps, limiters));
   app.use('/api', api);

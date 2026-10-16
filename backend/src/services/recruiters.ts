@@ -18,6 +18,7 @@ import {
 import type { Tx } from '../db/pool.js';
 import { badRequest, conflict, isUniqueViolation, notFound } from '../errors.js';
 import { logActivity } from './activity.js';
+import { cancelPendingFollowUps } from './followups.js';
 import { ensureCompany } from './companies.js';
 import { MESSAGE_SUMMARY_SELECT } from './messageQueries.js';
 import { FOLLOW_UP_SELECT } from './followupQueries.js';
@@ -228,6 +229,10 @@ export async function updateRecruiter(tx: Tx, userId: string, id: string, patch:
        WHERE user_id = $1 AND recruiter_id = $2 AND send_status = 'queued'`,
       [userId, id],
     );
+  }
+  // Marking the conversation as answered or closed by hand ends its reminders too.
+  if (patch.outreach_status && ['replied', 'interviewing', 'not_interested', 'bounced'].includes(patch.outreach_status) && !fields.do_not_contact) {
+    await cancelPendingFollowUps(tx, userId, id, patch.outreach_status === 'bounced' ? 'bounced' : patch.outreach_status === 'not_interested' ? 'not_interested' : 'reply_received');
   }
   if (patch.outreach_status && patch.outreach_status !== current.outreach_status) {
     await logActivity(tx, userId, 'recruiter_updated', `${current.full_name || current.email}: status → ${patch.outreach_status}`, { recruiterId: id });

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import multer from 'multer';
 import {
   analyticsRangeSchema,
@@ -32,7 +32,7 @@ import { idParam, parse, userId } from '../support.js';
 
 const resumeUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_RESUME_BYTES, files: 1, fields: 10 } });
 
-export function coreRoutes(deps: Deps): Router {
+export function coreRoutes(deps: Deps, limiters: { ai: RequestHandler }): Router {
   const r = Router();
 
   r.get('/me', async (req, res) => {
@@ -83,7 +83,8 @@ export function coreRoutes(deps: Deps): Router {
     });
     res.json(profile);
   });
-  r.post('/profile/extract', async (req, res) => {
+  // Uses the AI provider when configured, so it shares the AI rate limit.
+  r.post('/profile/extract', limiters.ai, async (req, res) => {
     const uid = userId(req);
     const body = parse(resumeExtractSchema, req.body);
     let text = body.pasted_text ?? '';
