@@ -63,7 +63,7 @@ Supabase, Railway or Gmail accounts.
 * **Optional address suggestions** in the add-recruiter form, always unverified, requiring
   confirmation before any send.
 * TypeScript across the API, dashboard, extension and a shared package; database migrations;
-  165 automated tests; deployment config for Railway and Vercel.
+  171 automated tests; deployment config for Railway and Vercel.
 
 ## Removed
 
@@ -94,9 +94,10 @@ Supabase, Railway or Gmail accounts.
   Google sign-in, real Gmail sending and reply detection, and the real AI providers were not
   exercised. Their code paths are covered by tests against a real PostgreSQL 16 database with
   fake Google/AI transports. Follow the backup and verification steps in [DEPLOYMENT.md](DEPLOYMENT.md).
-* The v1 database schema was reconstructed from the v1 code (no schema existed in the
-  repository). The legacy migration handles the columns the code used and adds any that are
-  missing, but a column that only exists in your database is left untouched.
+* The v1 database schema wasn't in the repository. The migration was built from the v1 code
+  and then checked against your production project's actual table and column list (which has
+  extra columns such as `recruiters.name`, `email_history.body` and an older `public.users`
+  table; all are handled). It has not been run on your rows; back up first.
 * Google issues 7-day refresh tokens while the OAuth app is in Testing, so you will reconnect
   Gmail weekly until the app is verified. `gmail.metadata` is a restricted scope.
 * Open tracking is inherently approximate and off by default.

@@ -260,7 +260,10 @@ export async function importLegacyTokens(deps: Deps): Promise<number> {
     if (!exists?.t) return 0;
     const rows = await tx.many<{ user_id: string; gmail_user: string | null; gmail_access_token: string | null; gmail_refresh_token: string | null; token_expires_at: string | null }>(
       `SELECT user_id, gmail_user, gmail_access_token, gmail_refresh_token, token_expires_at FROM user_smtp_settings
-       WHERE migrated_at IS NULL AND (gmail_refresh_token IS NOT NULL OR gmail_access_token IS NOT NULL) FOR UPDATE`,
+       WHERE migrated_at IS NULL AND (gmail_refresh_token IS NOT NULL OR gmail_access_token IS NOT NULL)
+         -- rows of deleted accounts (or without an owner) can't be imported; leave them alone
+         AND user_id IS NOT NULL AND EXISTS (SELECT 1 FROM auth.users u WHERE u.id = user_smtp_settings.user_id)
+       FOR UPDATE OF user_smtp_settings`,
     );
     let imported = 0;
     for (const r of rows) {

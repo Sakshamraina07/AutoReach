@@ -270,3 +270,174 @@ describe('migration on a hand-made v1 schema with enum types and a unique index'
     });
   });
 });
+
+/**
+ * The v1 schema as it exists in the real production project (column list taken from
+ * information_schema): recruiters has both `name` and `hr_name` and requires a company,
+ * email_history keeps `body`, user_smtp_settings has its own id, and an older
+ * public.users table still holds profiles and résumé links. Also covers leftovers of a
+ * deleted account and templates without a unique key.
+ */
+describe('migration on the production v1 schema', () => {
+  let db: { url: string; drop: () => Promise<void> };
+  let dana: string;
+  let eli: string;
+  const ghost = '00000000-0000-4000-8000-0000000000aa'; // an account that no longer exists
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    db = await createTestDatabase({ migrate: false });
+    dana = await createAuthUser(db.url, 'dana@gmail.com', { name: 'Dana From Metadata' });
+    eli = await createAuthUser(db.url, 'eli@gmail.com');
+    await withClient(db.url, async (c) => {
+      await c.query(`
+        CREATE TABLE public.recruiters (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, name text, email text NOT NULL,
+          company text NOT NULL, role text, status text DEFAULT 'Pending', created_at timestamptz DEFAULT now(),
+          hr_name text, source text DEFAULT 'manual' CHECK (source IN ('manual', 'csv', 'linkedin')), last_sent_at timestamptz, followup_count integer DEFAULT 0,
+          UNIQUE (user_id, email));
+        CREATE TABLE public.email_history (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, recruiter_id uuid, subject text, body text,
+          status text DEFAULT 'sent', sent_at timestamptz DEFAULT now(), opened_at timestamptz, error_message text,
+          retry_count integer DEFAULT 0, gmail_message_id text, gmail_thread_id text);
+        CREATE TABLE public.email_templates (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid NOT NULL, type text NOT NULL, subject text, body text,
+          created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
+        CREATE TABLE public.user_smtp_settings (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, gmail_user text NOT NULL, created_at timestamptz DEFAULT now(),
+          gmail_access_token text, gmail_refresh_token text, token_expires_at timestamptz, updated_at timestamptz DEFAULT now());
+        CREATE TABLE public.users (
+          id uuid PRIMARY KEY, email text, resume_url text, created_at timestamptz DEFAULT now(),
+          name text, degree text, year text, location text, contact text);
+        GRANT ALL ON public.users TO anon, authenticated;
+      `);
+      const rec = async (user: string, cols: Record<string, unknown>) => {
+        const keys = Object.keys(cols);
+        const { rows } = await c.query(`INSERT INTO recruiters (user_id, ${keys.join(',')}) VALUES ($1, ${keys.map((_, i) => `$${i + 2}`).join(',')}) RETURNING id`, [user, ...Object.values(cols)]);
+        return rows[0].id as string;
+      };
+      ids.byName = await rec(dana, { name: 'Priya Nair', email: 'priya@contoso.example', company: 'Contoso', status: 'Sent', last_sent_at: new Date(Date.now() - 2 * 86400000).toISOString() });
+      ids.byHrName = await rec(dana, { hr_name: 'Omar Haddad', name: 'ignored', email: 'omar@fabrikam.example', company: 'Fabrikam' });
+      ids.noCreated = await rec(dana, { email: 'nodate@litware.example', company: 'Litware', source: null });
+      await c.query(`UPDATE recruiters SET created_at = NULL WHERE id = $1`, [ids.noCreated]);
+      ids.ghostRec = await rec(ghost, { name: 'Left Behind', email: 'gone@contoso.example', company: 'Contoso', status: 'Sent', last_sent_at: new Date().toISOString() });
+
+      const hist = async (user: string, recruiter: string, subject: string | null, body: string | null, opened = false) =>
+        (
+          await c.query(
+            `INSERT INTO email_history (user_id, recruiter_id, subject, body, status, opened_at, gmail_message_id, gmail_thread_id)
+             VALUES ($1,$2,$3,$4,'delivered',$5,'m-' || gen_random_uuid(),'t-' || gen_random_uuid()) RETURNING id`,
+            [user, recruiter, subject, body, opened ? new Date().toISOString() : null],
+          )
+        ).rows[0].id as string;
+      ids.htmlMail = await hist(dana, ids.byName, 'Frontend Intern at Contoso', '<p>Hi Priya,</p><p>I&#39;d love to apply &amp; talk.<br>Thanks</p>', true);
+      ids.noSubject = await hist(dana, ids.byName, null, null);
+      ids.ghostMail = await hist(ghost, ids.ghostRec, 'Hello', 'Hi', true);
+
+      await c.query(`INSERT INTO email_templates (user_id, type, subject, body, updated_at) VALUES
+        ($1, 'initial', 'Old', 'old body', now() - interval '10 days'),
+        ($1, 'initial', 'New', 'new body', now() - interval '1 day'),
+        ($1, 'followup_1', 'F', 'f body', now())`, [dana]);
+      await c.query(`INSERT INTO user_smtp_settings (user_id, gmail_user, gmail_access_token, gmail_refresh_token) VALUES
+        ($1, 'dana@gmail.com', 'a', 'r'), ($2, 'ghost@gmail.com', 'ga', 'gr'), (NULL, 'nobody@gmail.com', 'na', 'nr')`, [dana, ghost]);
+      // Eli's profile and résumé only exist in the older public.users table.
+      await c.query(`INSERT INTO users (id, email, name, degree, year, location, contact, resume_url) VALUES
+        ($1, 'eli@gmail.com', 'Eli Older Table', 'B.E. CSE', '2027', 'Jammu', '+91 90000 11111', $2),
+        ($3, 'dana@gmail.com', 'Dana Older Name', 'B.Tech IT', '2026', 'Delhi', null, null)`,
+        [eli, `https://p.supabase.co/storage/v1/object/public/resumes/${eli}-1690000000000.pdf`, dana]);
+      await runMigrations(c);
+    });
+  });
+
+  afterAll(async () => {
+    await db?.drop();
+  });
+
+  it('keeps recruiter names from either v1 column and lets 2.0 save a recruiter without a company', async () => {
+    await withClient(db.url, async (c) => {
+      const r = await c.query(`SELECT id, full_name, company, outreach_status, created_at FROM recruiters WHERE user_id = $1`, [dana]);
+      const byId = Object.fromEntries(r.rows.map((x) => [x.id, x]));
+      expect(byId[ids.byName!]).toMatchObject({ full_name: 'Priya Nair', outreach_status: 'contacted' });
+      expect(byId[ids.byHrName!].full_name).toBe('Omar Haddad');
+      expect(byId[ids.noCreated!].created_at).not.toBeNull();
+      // v1's narrower source check is replaced: blanks became 'legacy', and 2.0's sources are accepted.
+      expect((await c.query(`SELECT source FROM recruiters WHERE id = $1`, [ids.noCreated])).rows[0].source).toBe('legacy');
+      await c.query(`INSERT INTO recruiters (user_id, email, email_normalized, source) VALUES ($1, 'nocompany@x.example', 'nocompany@x.example', 'browser_capture')`, [dana]);
+      await expect(c.query(`INSERT INTO recruiters (user_id, email, email_normalized, source) VALUES ($1, 'bad@x.example', 'bad@x.example', 'scraped')`, [dana])).rejects.toThrow(/recruiters_source_check/);
+      // The deleted account's rows are kept, untouched.
+      const ghostRow = await c.query(`SELECT full_name FROM recruiters WHERE id = $1`, [ids.ghostRec]);
+      expect(ghostRow.rows[0].full_name).toBe('Left Behind');
+    });
+  });
+
+  it('shows v1 email bodies as plain text and survives a missing subject', async () => {
+    await withClient(db.url, async (c) => {
+      const m = await c.query(`SELECT id, subject, body_text, send_status, legacy FROM email_messages WHERE user_id = $1 ORDER BY subject DESC`, [dana]);
+      const byId = Object.fromEntries(m.rows.map((x) => [x.id, x]));
+      expect(byId[ids.htmlMail!]).toMatchObject({ send_status: 'sent', legacy: true, body_text: "Hi Priya,\nI'd love to apply & talk.\nThanks" });
+      expect(byId[ids.noSubject!]).toMatchObject({ subject: '', send_status: 'sent' });
+      const act = await c.query(`SELECT count(*)::int AS n FROM activity_log WHERE user_id = $1`, [ghost]);
+      expect(act.rows[0].n).toBe(0);
+    });
+  });
+
+  it('fills profiles and the résumé from the older users table only where metadata had nothing', async () => {
+    await withClient(db.url, async (c) => {
+      const p = await c.query(`SELECT user_id, full_name, degree, phone, current_location, graduation_year FROM profiles WHERE user_id IN ($1, $2)`, [dana, eli]);
+      const byUser = Object.fromEntries(p.rows.map((x) => [x.user_id, x]));
+      expect(byUser[eli]).toMatchObject({ full_name: 'Eli Older Table', degree: 'B.E. CSE', phone: '+91 90000 11111', current_location: 'Jammu', graduation_year: 2027 });
+      expect(byUser[dana]).toMatchObject({ full_name: 'Dana From Metadata', degree: 'B.Tech IT', current_location: 'Delhi' });
+      const r = await c.query(`SELECT user_id, storage_path, is_default, legacy FROM resumes`);
+      expect(r.rows).toEqual([{ user_id: eli, storage_path: `${eli}-1690000000000.pdf`, is_default: true, legacy: true }]);
+    });
+  });
+
+  it('keeps the newest template per type and adds the key 2.0 saves against', async () => {
+    await withClient(db.url, async (c) => {
+      const t = await c.query(`SELECT type, subject FROM email_templates WHERE user_id = $1 ORDER BY type`, [dana]);
+      expect(t.rows).toEqual([
+        { type: 'followup_1', subject: 'F' },
+        { type: 'initial', subject: 'New' },
+      ]);
+      await c.query(
+        `INSERT INTO email_templates (user_id, type, subject, body) VALUES ($1, 'initial', 'Saved', 'b') ON CONFLICT (user_id, type) DO UPDATE SET subject = EXCLUDED.subject`,
+        [dana],
+      );
+    });
+  });
+
+  it('closes the older users table to the public API roles', async () => {
+    await withClient(db.url, async (c) => {
+      for (const role of ['anon', 'authenticated']) {
+        await c.query('BEGIN');
+        await c.query(`SET LOCAL ROLE ${role}`);
+        await expect(c.query('SELECT 1 FROM public.users LIMIT 1')).rejects.toThrow(/permission denied/);
+        await c.query('ROLLBACK');
+      }
+    });
+  });
+
+  it('imports v1 Gmail tokens, skipping rows without a live account', async () => {
+    const { importLegacyTokens } = await import('../src/services/gmail/connection.js');
+    const { Db } = await import('../src/db/pool.js');
+    const { createLogger } = await import('../src/logger.js');
+    const { randomBytes } = await import('node:crypto');
+    const appDb = new Db({ url: db.url, ssl: 'disable', poolMax: 2, rlsRole: 'autoreach_app' }, createLogger('silent'));
+    try {
+      const deps = { db: appDb, config: { tokenEncryptionKey: randomBytes(32) } } as unknown as Parameters<typeof importLegacyTokens>[0];
+      expect(await importLegacyTokens(deps)).toBe(1);
+    } finally {
+      await appDb.close();
+    }
+    await withClient(db.url, async (c) => {
+      const conn = await c.query(`SELECT user_id, account_email, imported_from_v1 FROM oauth_connections`);
+      expect(conn.rows).toEqual([{ user_id: dana, account_email: 'dana@gmail.com', imported_from_v1: true }]);
+      const plain = await c.query(`SELECT gmail_user, gmail_refresh_token IS NULL AS cleared FROM user_smtp_settings ORDER BY gmail_user`);
+      expect(plain.rows).toEqual([
+        { gmail_user: 'dana@gmail.com', cleared: true },
+        { gmail_user: 'ghost@gmail.com', cleared: false },
+        { gmail_user: 'nobody@gmail.com', cleared: false },
+      ]);
+    });
+  });
+});

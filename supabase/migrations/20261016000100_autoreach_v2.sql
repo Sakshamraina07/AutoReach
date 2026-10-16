@@ -107,6 +107,30 @@ select
 from auth.users u
 on conflict (user_id) do nothing;
 
+-- Earlier v1 versions kept the profile (and résumé link) in a public.users table
+-- before moving it to user_metadata. Fill only what the metadata didn't have, and
+-- only on the first run (user_settings is created further down by this file).
+do $$
+begin
+  if to_regclass('public.user_settings') is null and to_regclass('public.users') is not null
+     and pg_temp.col_exists('users', 'id') and pg_temp.col_exists('users', 'name') and pg_temp.col_exists('users', 'degree')
+     and pg_temp.col_exists('users', 'year') and pg_temp.col_exists('users', 'location') and pg_temp.col_exists('users', 'contact') then
+    execute $sql$
+      update public.profiles p
+      set
+        full_name = coalesce(nullif(p.full_name, ''), nullif(btrim(pu.name), ''), ''),
+        phone = coalesce(p.phone, case when pu.contact ~ '@' then null else nullif(btrim(pu.contact), '') end),
+        degree = coalesce(p.degree, nullif(btrim(pu.degree), '')),
+        current_location = coalesce(p.current_location, nullif(btrim(pu.location), '')),
+        legacy_year = coalesce(p.legacy_year, nullif(btrim(pu.year), '')),
+        graduation_year = coalesce(p.graduation_year, case when btrim(pu.year) ~ '^(19|20|21)[0-9]{2}$' then btrim(pu.year)::smallint end)
+      from public.users pu
+      where pu.id = p.user_id
+    $sql$;
+  end if;
+end
+$$;
+
 -- ---------------------------------------------------------------------
 -- 2. Résumés (private storage; v1 stored a public URL in user metadata)
 -- ---------------------------------------------------------------------
@@ -157,6 +181,34 @@ begin
       -- so a URL pointing at anyone else's object (or a nested path) is ignored.
       and substring(u.raw_user_meta_data ->> 'resume_url' from '/storage/v1/object/public/resumes/([^?#]+)') ~ ('^' || u.id::text || '-[A-Za-z0-9._-]+$')
     on conflict (user_id, storage_path) do nothing;
+
+    -- Same rules for a résumé link kept in the older public.users table.
+    if to_regclass('public.users') is not null and pg_temp.col_exists('users', 'resume_url') then
+      execute $sql$
+        insert into public.resumes (user_id, label, file_name, storage_path, mime_type, is_default, legacy)
+        select
+          pu.id,
+          'Résumé (from AutoReach v1)',
+          case
+            when lower(substring(pu.resume_url from '\.([A-Za-z0-9]+)(\?.*)?$')) = 'pdf' then 'Resume.pdf'
+            else 'Resume.' || coalesce(lower(substring(pu.resume_url from '\.([A-Za-z0-9]+)(\?.*)?$')), 'pdf')
+          end,
+          substring(pu.resume_url from '/storage/v1/object/public/resumes/([^?#]+)'),
+          case lower(coalesce(substring(pu.resume_url from '\.([A-Za-z0-9]+)(\?.*)?$'), 'pdf'))
+            when 'pdf' then 'application/pdf'
+            when 'docx' then 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            when 'doc' then 'application/msword'
+            else 'application/octet-stream'
+          end,
+          true,
+          true
+        from public.users pu
+        join auth.users u on u.id = pu.id
+        where substring(pu.resume_url from '/storage/v1/object/public/resumes/([^?#]+)') ~ ('^' || pu.id::text || '-[A-Za-z0-9._-]+$')
+          and not exists (select 1 from public.resumes r where r.user_id = pu.id)
+        on conflict (user_id, storage_path) do nothing
+      $sql$;
+    end if;
   end if;
 end
 $$;
@@ -291,6 +343,42 @@ begin
   loop
     execute format('drop index %s', idx.name);
   end loop;
+end
+$$;
+
+-- A v1 check on source (an inline column check gets the default name
+-- recruiters_source_check) would reject 2.0's values, including the mapping below.
+-- Drop it; 2.0's own check is added after the mapping.
+do $$
+declare
+  con record;
+begin
+  for con in
+    select c.conname from pg_constraint c
+    where c.conrelid = 'public.recruiters'::regclass and c.contype = 'c' and pg_get_constraintdef(c.oid) ~ '\msource\M'
+  loop
+    execute format('alter table public.recruiters drop constraint %I', con.conname);
+  end loop;
+end
+$$;
+
+-- 2.0 lets a recruiter be saved without a company (some v1 databases required one).
+alter table public.recruiters alter column company drop not null;
+update public.recruiters set created_at = now() where created_at is null;
+alter table public.recruiters alter column created_at set default now();
+alter table public.recruiters alter column created_at set not null;
+
+-- Some v1 databases also have a `name` column next to `hr_name` (now full_name):
+-- keep whichever one v1 filled in.
+do $$
+begin
+  if pg_temp.col_exists('recruiters', 'name') and pg_temp.col_exists('recruiters', 'email_normalized') then
+    execute $sql$
+      update public.recruiters
+      set full_name = btrim(name)
+      where email_normalized is null and coalesce(btrim(full_name), '') = '' and coalesce(btrim(name), '') <> ''
+    $sql$;
+  end if;
 end
 $$;
 
@@ -531,6 +619,24 @@ set
   created_at = coalesce(m.sent_at, m.created_at)
 where m.send_status is null;
 
+-- Some v1 databases kept the sent body in `body`: show it as plain text.
+do $$
+begin
+  if pg_temp.col_exists('email_messages', 'body') then
+    execute $sql$
+      update public.email_messages
+      set body_text = btrim(
+        replace(replace(replace(replace(replace(replace(
+          regexp_replace(
+            regexp_replace(body, '<\s*(br\s*/?|/p|/div|/li)\s*>', E'\n', 'gi'),
+            '<[^>]*>', '', 'g'),
+          '&nbsp;', ' '), '&lt;', '<'), '&gt;', '>'), '&quot;', '"'), '&#39;', ''''), '&amp;', '&'), E' \n\r\t')
+      where legacy and body_text = '' and coalesce(body, '') <> ''
+    $sql$;
+  end if;
+end
+$$;
+
 -- v1 stamped sent_at when the attempt *started*; only keep it for real sends.
 update public.email_messages
 set sent_at = null
@@ -622,6 +728,7 @@ insert into public.email_events (user_id, message_id, occurred_at, classificatio
 select m.user_id, m.id, m.first_open_at, 'open_detected', 'legacy', true, true
 from public.email_messages m
 where m.legacy and m.first_open_at is not null and m.user_id is not null
+  and exists (select 1 from auth.users u where u.id = m.user_id)
   and not exists (select 1 from public.email_events e where e.message_id = m.id and e.legacy);
 
 -- ---------------------------------------------------------------------
@@ -645,6 +752,7 @@ select distinct on (m.user_id, m.gmail_thread_id)
   m.user_id, m.gmail_thread_id, m.recruiter_id, m.id, m.sent_at
 from public.email_messages m
 where m.gmail_thread_id is not null and m.user_id is not null and m.send_status = 'sent'
+  and exists (select 1 from auth.users u where u.id = m.user_id)
 order by m.user_id, m.gmail_thread_id, m.sent_at asc nulls last
 on conflict (user_id, gmail_thread_id) do nothing;
 
@@ -729,6 +837,7 @@ where coalesce(r.followup_count, 0) < 2
   and r.outreach_status = 'contacted'
   and l.sent_at > now() - interval '90 days'
   and l.user_id is not null
+  and exists (select 1 from auth.users u where u.id = l.user_id)
   and not exists (select 1 from public.follow_ups fu where fu.recruiter_id = l.recruiter_id)
 on conflict (original_message_id, step) do nothing;
 
@@ -756,7 +865,7 @@ begin
       'Added ' || coalesce(nullif(r.full_name, ''), r.email) || coalesce(' (' || nullif(r.company, '') || ')', ''),
       r.id, '{"source": "v1_migration"}'::jsonb, r.created_at
     from public.recruiters r
-    where r.merged_into_id is null;
+    where r.merged_into_id is null and exists (select 1 from auth.users u where u.id = r.user_id);
 
     insert into public.activity_log (user_id, type, summary, recruiter_id, message_id, metadata, occurred_at)
     select m.user_id,
@@ -765,13 +874,13 @@ begin
         || ' "' || left(m.subject, 120) || '" to ' || m.recipient_email,
       m.recruiter_id, m.id, '{"source": "v1_migration"}'::jsonb, coalesce(m.sent_at, m.failed_at, m.created_at)
     from public.email_messages m
-    where m.legacy and m.user_id is not null;
+    where m.legacy and m.user_id is not null and exists (select 1 from auth.users u where u.id = m.user_id);
 
     insert into public.activity_log (user_id, type, summary, recruiter_id, message_id, metadata, occurred_at)
     select m.user_id, 'open_detected', 'Open detected for "' || left(m.subject, 120) || '"',
       m.recruiter_id, m.id, '{"source": "v1_migration"}'::jsonb, m.first_open_at
     from public.email_messages m
-    where m.legacy and m.first_open_at is not null and m.user_id is not null;
+    where m.legacy and m.first_open_at is not null and m.user_id is not null and exists (select 1 from auth.users u where u.id = m.user_id);
   end if;
 end
 $$;
@@ -818,6 +927,27 @@ alter table public.user_smtp_settings add column if not exists migrated_at times
 -- ---------------------------------------------------------------------
 alter table public.email_templates add column if not exists created_at timestamptz not null default now();
 alter table public.email_templates add column if not exists updated_at timestamptz not null default now();
+-- 2.0 saves templates with ON CONFLICT (user_id, type). If a v1 database lacks that
+-- unique key, keep the most recently updated template of each type and add it.
+do $$
+begin
+  if not exists (
+    select 1 from pg_index i
+    where i.indrelid = 'public.email_templates'::regclass and i.indisunique and i.indpred is null
+      and (
+        select array_agg(a.attname::text order by a.attname)
+        from unnest(i.indkey) k join pg_attribute a on a.attrelid = i.indrelid and a.attnum = k
+      ) = array['type', 'user_id']
+  ) then
+    delete from public.email_templates t
+    using public.email_templates newer
+    where newer.user_id = t.user_id and newer.type = t.type and newer.id <> t.id
+      and (coalesce(newer.updated_at, newer.created_at, 'epoch') > coalesce(t.updated_at, t.created_at, 'epoch')
+           or (coalesce(newer.updated_at, newer.created_at, 'epoch') = coalesce(t.updated_at, t.created_at, 'epoch') and newer.id > t.id));
+    create unique index email_templates_user_type_key on public.email_templates (user_id, type);
+  end if;
+end
+$$;
 
 -- ---------------------------------------------------------------------
 -- 14. updated_at triggers
@@ -871,6 +1001,23 @@ begin
       t
     );
   end loop;
+end
+$$;
+
+-- The older v1 public.users table (profile and résumé link) is no longer used. It is
+-- kept for reference but closed to Supabase's public API roles, like every other table.
+do $$
+declare
+  public_role text;
+begin
+  if to_regclass('public.users') is not null then
+    foreach public_role in array array['anon', 'authenticated']
+    loop
+      if exists (select 1 from pg_roles where rolname = public_role) then
+        execute format('revoke all on public.users from %I', public_role);
+      end if;
+    end loop;
+  end if;
 end
 $$;
 

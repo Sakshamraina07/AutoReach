@@ -13,16 +13,16 @@ npm run check   # typecheck → lint → tests → production builds
 ```
 
 Result: **exit code 0**: TypeScript type checks for all four workspaces, ESLint with no
-errors or warnings, **165 of 165 tests passed**, and the production builds of the API,
+errors or warnings, **171 of 171 tests passed**, and the production builds of the API,
 dashboard and extension completed with no warnings.
 
 | Workspace | Test files | Tests | What they run against |
 |---|---|---|---|
 | `packages/shared` | 1 | 26 | Pure functions (validation, status rules, quality checks, templates, dates) |
-| `backend` | 6 | 92 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
+| `backend` | 6 | 98 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
 | `dashboard` | 2 | 13 | React components in jsdom (Testing Library) |
 | `extension` | 7 | 34 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
-| **Total** | **16** | **165** | |
+| **Total** | **16** | **171** | |
 
 Each backend test file gets its own fresh database; the migrations run from scratch, including
 a reconstruction of the v1 schema, so the migration tests start from v1-shaped data.
@@ -79,7 +79,8 @@ access from the sandbox), so no email was actually sent.
 * **Deployment** to Railway and Vercel, and the Chrome Web Store.
 * **Live Gmail pages:** the assist was tested on a fixture page, not on mail.google.com.
 * **Your v1 data:** the migration was tested on a reconstruction of the v1 schema built from the
-  v1 code. Take the backup in [DEPLOYMENT.md](DEPLOYMENT.md#1-back-up-before-migrating) first.
+  v1 code, and on a copy of your production project's actual v1 table and column layout
+  (taken from `information_schema`), not on its rows. Take the backup in [DEPLOYMENT.md](DEPLOYMENT.md#1-back-up-before-migrating) first.
 
 ## Every automated test
 
@@ -195,7 +196,7 @@ Generated from the test runner's JSON output for the run above.
 - analytics from stored records › reports KPIs, time series, breakdowns and insights from real rows
 - account data rights › exports without secrets and deletes everything for the user only
 
-### `backend/test/migrations.test.ts` (7)
+### `backend/test/migrations.test.ts` (13)
 
 - v1 → v2 migration preserves data › keeps every recruiter row and maps statuses without re-queuing anyone
 - v1 → v2 migration preserves data › renames email_history to email_messages and maps send outcomes honestly
@@ -204,6 +205,12 @@ Generated from the test runner's JSON output for the run above.
 - v1 → v2 migration preserves data › is idempotent when the v2 file is applied a second time
 - v1 → v2 migration preserves data › enforces per-user isolation for the application role and locks out public roles
 - migration on a hand-made v1 schema with enum types and a unique index › converts enum columns, drops the case-sensitive unique index and keeps history on recruiter delete
+- migration on the production v1 schema › keeps recruiter names from either v1 column and lets 2.0 save a recruiter without a company
+- migration on the production v1 schema › shows v1 email bodies as plain text and survives a missing subject
+- migration on the production v1 schema › fills profiles and the résumé from the older users table only where metadata had nothing
+- migration on the production v1 schema › keeps the newest template per type and adds the key 2.0 saves against
+- migration on the production v1 schema › closes the older users table to the public API roles
+- migration on the production v1 schema › imports v1 Gmail tokens, skipping rows without a live account
 
 ### `backend/test/unit.test.ts` (16)
 
