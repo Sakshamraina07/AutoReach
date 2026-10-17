@@ -12,7 +12,7 @@ import { Button, useToast } from './ui';
 const NAV: { to: string; label: string; icon: ReactNode; end?: boolean }[] = [
   { to: '/', label: 'Overview', icon: <LayoutGrid className="h-4 w-4" />, end: true },
   { to: '/recruiters', label: 'Recruiters', icon: <Users className="h-4 w-4" /> },
-  { to: '/opportunities', label: 'Opportunities', icon: <Briefcase className="h-4 w-4" /> },
+  { to: '/opportunities', label: 'Jobs', icon: <Briefcase className="h-4 w-4" /> },
   { to: '/outreach', label: 'Outreach', icon: <Send className="h-4 w-4" />, end: true },
   { to: '/followups', label: 'Follow-ups', icon: <Bell className="h-4 w-4" /> },
   { to: '/analytics', label: 'Analytics', icon: <BarChart3 className="h-4 w-4" /> },
@@ -87,8 +87,8 @@ export function Layout() {
         </svg>
         <span className="text-lg font-semibold tracking-tight">AutoReach</span>
       </Link>
-      <Button variant="primary" className="mb-3 w-full" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/outreach/new')}>
-        New outreach
+      <Button variant="primary" className="mb-3 w-full" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/jobs/new')}>
+        New job
       </Button>
       {NAV.map((n) => (
         <NavLink

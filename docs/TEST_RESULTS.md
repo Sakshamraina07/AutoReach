@@ -13,16 +13,16 @@ npm run check   # typecheck → lint → tests → production builds
 ```
 
 Result: **exit code 0**: TypeScript type checks for all four workspaces, ESLint with no
-errors or warnings, **172 of 172 tests passed**, and the production builds of the API,
+errors or warnings, **197 of 197 tests passed**, and the production builds of the API,
 dashboard and extension completed with no warnings.
 
 | Workspace | Test files | Tests | What they run against |
 |---|---|---|---|
-| `packages/shared` | 1 | 26 | Pure functions (validation, status rules, quality checks, templates, dates) |
-| `backend` | 6 | 99 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
-| `dashboard` | 2 | 13 | React components in jsdom (Testing Library) |
+| `packages/shared` | 2 | 34 | Pure functions (validation, status rules, quality checks, templates, dates, job-description reading, fit, pasted contacts) |
+| `backend` | 7 | 114 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
+| `dashboard` | 3 | 15 | React components in jsdom (Testing Library) |
 | `extension` | 7 | 34 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
-| **Total** | **16** | **172** | |
+| **Total** | **19** | **197** | |
 
 Each backend test file gets its own fresh database; the migrations run from scratch, including
 a reconstruction of the v1 schema, so the migration tests start from v1-shaped data.
@@ -36,6 +36,8 @@ Some of the new tests were run against deliberately broken code to make sure the
 * With the message lock at the start of `deleteResume` removed, the résumé-deletion test
   failed after about a second: PostgreSQL detected the deadlock between deleting the default
   résumé and a send holding that résumé's email.
+* With the recruiter lock at the start of `prepareJobEmail` removed, the "two requests at once
+  write one draft" test failed: two drafts were created for the same person.
 * With the Gmail card's backoff removed, the two backoff tests failed (the card asked the
   API again on every Gmail re-render).
 
@@ -50,8 +52,9 @@ access from the sandbox), so no email was actually sent.
 
 | Flow | Result |
 |---|---|
-| **Fresh database** | Migrations applied 3 of 3 on an empty database; a second run applied none |
-| **Onboarding** for a new user | Résumé upload opened the extraction dialog; pattern-based suggestions (no AI configured) were labelled "replaces yours" / "adds to yours" and applied only after "Use selected fields"; the run went through all seven steps, and finishing led to the Overview |
+| **Fresh database** | Migrations applied 3 of 3 on an empty database; a second run applied none. The new `20261018000000_job_analysis.sql` then applied on the existing local database (1 applied, 3 already applied) |
+| **Paste a job → emails** (API with `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.8-flash`, `AI_BASE_URL` pointing at a local stand-in that answers in Gemini's `generateContent` format; **not** Google) | **New job** → pasted a fictional posting → **Read job description** saved it and opened the job page: "Strong fit", both priorities with their quotes, must-have skills ticked, "Read by gemini-3.8-flash". The request reached `/v1beta/models/gemini-3.8-flash:generateContent` with the `x-goog-api-key` header and `thinkingConfig: {thinkingLevel: "low"}`. Pasting two people and a line without an address showed "Added 2 people. Skipped 1 line…"; both emails were written one after the other without a click; the recruiter's prompt had the `job:priorities` fact and no referral instruction; the engineering manager's prompt had the referral instruction and the first email's opening under "Start the body differently". With Google client settings but no connected Gmail, each card said "Connect your Gmail account to send. This draft is saved." and **Send cold email** was disabled. An edit was saved and was still there after a reload, and reloading wrote no new emails. **Write again** wrote a new version whose prompt avoided the old opening. At 390 px wide there was no horizontal scrolling. The Jobs list row opened the job page. No console errors |
+| **Onboarding** for a new user | Three steps (Your résumé, Check your details, Connect Gmail); **Finish without Gmail** led to **New job** |
 | **Recruiter CRM** | Added a recruiter; adding `PAT.LEE@…` for an existing `pat.lee@…` showed "already saved as Pat Lee" with **Open existing recruiter**, and nothing was saved (the only console error was that 409 response) |
 | **Composer** | Template draft filled from the profile; the send dialog showed "Gmail sending isn't set up on this server yet…" and the Send button was disabled |
 | **Composer, fresh instance** | With text typed for one recruiter, the sidebar's **New outreach** opened an empty composer; saving a draft (which adds `?draft=` to the address) kept the composer's state |
@@ -75,7 +78,12 @@ access from the sandbox), so no email was actually sent.
 * **Real Supabase:** Google sign-in for the dashboard and extension, JWT verification against
   your project, private résumé storage.
 * **Real AI providers** (Anthropic, OpenAI, Gemini, Groq, OpenAI-compatible): covered with a
-  fake provider.
+  fake provider, and Gemini's request and response format with a local stand-in. How well a
+  real model reads job descriptions and writes the emails has not been checked here; read
+  every email before you send it.
+* **Sending from the job page through real Gmail**: the send endpoint it uses is covered by the
+  backend tests (including one that sends a job-page draft through the fake Gmail), not by a
+  real mailbox.
 * **Deployment** to Railway and Vercel, and the Chrome Web Store.
 * **Live Gmail pages:** the assist was tested on a fixture page, not on mail.google.com.
 * **Your v1 data:** the migration was tested on a reconstruction of the v1 schema built from the
@@ -85,6 +93,17 @@ access from the sandbox), so no email was actually sent.
 ## Every automated test
 
 Generated from the test runner's JSON output for the run above.
+
+### `packages/shared/src/jobs.test.ts` (8)
+
+- job description analysis without AI › pulls out the role, company, location, skills and experience
+- checking an AI analysis against the job description › keeps what the JD supports and drops what it does not
+- checking an AI analysis against the job description › falls back to the plain analysis when the AI returns nothing usable
+- the candidate's fit › counts matches and names the projects that show them
+- the candidate's fit › names only the alternative the candidate actually has
+- the candidate's fit › is honest about experience gaps and senior roles
+- pasted recruiter contacts › reads the common formats people paste
+- pasted recruiter contacts › reads a CSV with an email column, including quoted commas
 
 ### `packages/shared/src/shared.test.ts` (26)
 
@@ -141,6 +160,20 @@ Generated from the test runner's JSON output for the run above.
 - recruiter CRM › marks do-not-contact and cancels pending follow-ups
 - opportunities › creates an opportunity, derives role category and skills, links recruiters, explains match
 - settings › stores current time-zone names even when the browser reports an old alias
+
+### `backend/test/api.jobs.test.ts` (11)
+
+- reading a job description › keeps only what the job description says and shows the honest fit
+- reading a job description › falls back to a plain reading when the AI fails or replies with nonsense
+- reading a job description › works without an AI provider
+- reading a job description › asks for the full text
+- saving the job and adding people › saves the job once per posting URL and keeps the confirmed analysis
+- saving the job and adding people › adds pasted contacts under the job, links saved ones and reports what it skipped
+- saving the job and adding people › suggests saved people at the same company who are not on the job yet
+- the email for each person › writes from the job analysis, reuses the draft, varies the opening per person and sends on approval
+- the email for each person › two requests at once write one draft
+- the email for each person › can't write emails on someone else's job
+- opening of an email › skips the greeting and keeps two sentences
 
 ### `backend/test/api.send.test.ts` (27)
 
@@ -212,7 +245,7 @@ Generated from the test runner's JSON output for the run above.
 - migration on the production v1 schema › closes the older users table to the public API roles
 - migration on the production v1 schema › imports v1 Gmail tokens, skipping rows without a live account
 
-### `backend/test/unit.test.ts` (17)
+### `backend/test/unit.test.ts` (21)
 
 - crypto › round-trips with AES-256-GCM and detects tampering
 - crypto › computes RFC 7636 S256 challenges
@@ -221,6 +254,10 @@ Generated from the test runner's JSON output for the run above.
 - Gmail client error mapping › maps statuses to outcomes that decide whether a retry could duplicate an email
 - Gmail client error mapping › retries idempotent reads on transient errors
 - AI JSON parsing › tolerates fences and prose but rejects arrays
+- Gemini provider › asks Gemini 3 models to think at "low" and leaves room for thinking in the output limit
+- Gemini provider › uses a thinking budget for Gemini 2.5 and nothing for older models
+- Gemini provider › reports an empty answer (e.g. the limit was spent thinking) as a provider error
+- Gemini provider › passes on rate limiting as a 429
 - résumé heuristics › extracts only what is present
 - résumé heuristics › separates the college from the degree and dates
 - configuration › fails fast with actionable messages
@@ -250,6 +287,11 @@ Generated from the test runner's JSON output for the run above.
 - Gmail connection callback page › shows the API’s reason when completing fails
 - stacked overlays › closes a dialog nested inside a drawer first, even when both open together
 - stacked overlays › closes only the innermost one on Escape
+
+### `dashboard/src/test/jobs.test.tsx` (2)
+
+- job page › shows the reading with the JD’s own words, writes the email by itself and sends on one click
+- job page › saves edits before sending
 
 ### `extension/src/test/api.test.ts` (9)
 

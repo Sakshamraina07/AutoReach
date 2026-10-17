@@ -359,6 +359,8 @@ export const aiDraftSchema = z.object({
   extra_instructions: optionalText(600),
   /** Force the non-AI template composer even if AI is configured. */
   use_template: z.boolean().default(false),
+  /** Opening lines already used for other people at the same company: write a different one. */
+  avoid_openings: z.array(z.string().trim().max(400)).max(10).default([]),
 });
 export type AiDraftRequest = z.infer<typeof aiDraftSchema>;
 

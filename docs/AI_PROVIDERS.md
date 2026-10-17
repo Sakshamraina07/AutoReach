@@ -25,20 +25,46 @@ the provider and model.
 |---|---|---|
 | `anthropic` | `https://api.anthropic.com/v1/messages` (`x-api-key`, `anthropic-version: 2023-06-01`) | e.g. `claude-haiku-5-5` (fast, inexpensive) or `claude-sonnet-5-5`. Keys: console.anthropic.com |
 | `openai` | `https://api.openai.com/v1/chat/completions` (JSON mode) | Use a current chat model ID from platform.openai.com/docs/models |
-| `gemini` | `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` (`x-goog-api-key`, JSON response type) | Model IDs: ai.google.dev/gemini-api/docs/models |
+| `gemini` | `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` (`x-goog-api-key`, JSON response type) | e.g. `gemini-3.8-flash`; see below. Model IDs: ai.google.dev/gemini-api/docs/models |
 | `groq` | `https://api.groq.com/openai/v1/chat/completions` | e.g. `llama-3.3-70b-versatile`; see console.groq.com/docs/models |
 | `openai_compatible` | `${AI_BASE_URL}/chat/completions` | Any OpenAI-compatible server, e.g. Ollama at `http://localhost:11434/v1` with `AI_MODEL=llama3.1`. `AI_API_KEY` optional |
+
+### Gemini
+
+```env
+AI_PROVIDER=gemini
+AI_MODEL=gemini-3.8-flash      # or gemini-3.5-flash-lite (cheaper)
+AI_API_KEY=...                 # from aistudio.google.com → Get API key
+```
+
+* Gemini 3 models always think before answering. AutoReach asks for
+  `thinkingConfig.thinkingLevel: "low"` and adds 4,096 tokens of room to `maxOutputTokens`,
+  because thinking counts against that limit. Gemini 2.5 models get a `thinkingBudget`
+  (512 for Flash, 1,024 for Pro) instead. If a reply still comes back empty (finish reason
+  `MAX_TOKENS`), the error says so.
+* **Free tier and your data.** Google's pricing page lists the free tier of these models as
+  "Used to improve our products: **Yes**" and the paid tier as "No"
+  ([pricing](https://ai.google.dev/gemini-api/docs/pricing), checked 17 October 2026). On the
+  free tier, the job descriptions, your profile facts and your drafts that AutoReach sends can
+  be used by Google. Turn on billing for the key's project if you don't want that. Paid
+  prices on that page: `gemini-3.8-flash` $0.75 input / $3.75 output per million tokens until
+  31 December 2026 (then $1.50 / $7.50); `gemini-3.5-flash-lite` $0.30 / $2.50. Thinking
+  tokens are billed too. Free-tier request limits are shown in AI Studio, not in the docs.
 
 Model names change; use the provider's current model list. A wrong model ID or key shows up
 as an error in the composer; **Use my template** still builds a draft without AI.
 
 ## What is sent to the provider
 
-Only when you press **Generate**, a refine action, or **Fill from résumé**:
+When you press **Read job description**, the job page writes an email, or you press
+**Generate**, a refine action, or **Fill from résumé**:
 
-* your profile facts (name, education, skills, projects and achievements, experience, links);
+* reading a job description sends **only the text you pasted** (not your profile);
+* for emails: your profile facts (name, education, skills, projects and achievements, experience, links);
 * the recruiter's name, title and company;
-* the job title, description and company notes you saved;
+* the job title, description and company notes you saved, and the confirmed reading of the
+  job (priorities with their quotes, skills, experience) plus which of its skills your profile
+  lists;
 * your earlier AutoReach emails to that recruiter (for follow-ups);
 * your tone, goal, writing-style notes and template (as a style reference);
 * for "Fill from résumé", the résumé text.
@@ -57,6 +83,12 @@ check them before enabling a provider.
   missing or unmentioned attachment, already contacted. Errors must be fixed or explicitly
   overridden before sending.
 * "How this draft was made" lists the facts the model says it used.
+* On the job page, the reading of the job description is checked against the pasted text
+  before you see it: skills that aren't in the text are dropped, each priority must quote the
+  text word for word, responsibilities must mostly use its words, a minimum number of years
+  must be written next to "year(s)", and the company and role must appear in it. The email
+  prompt names only the skills from the posting that your profile lists (for "Java / Kotlin"
+  only the one you have) and says never to mention missing skills.
 * Drafts are never sent automatically. Automatic follow-ups (off by default) only ever use
   your own follow-up template, never AI text.
 

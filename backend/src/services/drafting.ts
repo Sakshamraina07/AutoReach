@@ -3,6 +3,7 @@ import {
   canonicalSkillSet,
   classifyRoleCategory,
   compileTemplate,
+  computeJobFit,
   extractSkills,
   firstNameOf,
   OUTREACH_GOAL_LABELS,
@@ -12,6 +13,7 @@ import {
   type AiDraftRequest,
   type AiRefineAction,
   type DraftResult,
+  type JobFit,
   type Opportunity,
   type Profile,
   type QualityFinding,
@@ -58,6 +60,8 @@ export interface DraftContext {
   signature: string;
   templates: Partial<Record<TemplateType, { subject: string; body: string }>>;
   timezone: string;
+  /** Fit against the confirmed job analysis, when the opportunity has one. */
+  fit: JobFit | null;
 }
 
 function monthName(m: number | null): string {
@@ -187,6 +191,16 @@ export async function buildDraftContext(
     if (opportunity.required_skills.length) bits.push(`Listed skills: ${opportunity.required_skills.join(', ')}`);
     if (opportunity.experience_requirements) bits.push(`Experience: ${opportunity.experience_requirements}`);
     facts.push({ id: 'job', text: bits.join('. ') });
+    const a = opportunity.analysis;
+    if (a?.priorities.length) {
+      facts.push({
+        id: 'job:priorities',
+        text: `What the team says it cares about most (each with the job description's own words): ${a.priorities.map((p, i) => `${i + 1}. ${p.point} — "${p.evidence}"`).join(' ')}`,
+      });
+    }
+    if (a?.must_have.length) facts.push({ id: 'job:must_have', text: `Must-have skills in the job description: ${a.must_have.join(', ')}` });
+    if (a?.nice_to_have.length) facts.push({ id: 'job:nice_to_have', text: `Nice-to-have skills in the job description: ${a.nice_to_have.join(', ')}` });
+    if (a?.experience.text) facts.push({ id: 'job:experience', text: `Experience the job asks for: ${a.experience.text}` });
     if (opportunity.description) facts.push({ id: 'job:description', text: `Job description (excerpt): ${opportunity.description.slice(0, 3500)}` });
     if (opportunity.notes) facts.push({ id: 'job:notes', text: `Candidate's notes about this opportunity: ${opportunity.notes.slice(0, 1500)}` });
     if (opportunity.company_notes) facts.push({ id: 'company:notes', text: `Company information supplied by the candidate: ${opportunity.company_notes.slice(0, 1500)}` });
@@ -203,6 +217,16 @@ export async function buildDraftContext(
       text: `Previously sent (${m.sent_at ? new Date(m.sent_at).toISOString().slice(0, 10) : 'date unknown'}), subject "${m.subject}"${m.body_text ? `: ${m.body_text.slice(0, 1200)}` : ''}`,
     });
   });
+
+  const fit = opportunity?.analysis
+    ? computeJobFit({ skills: profile.skills, projects: profile.projects, experience: profile.experience }, opportunity.analysis, deps.now())
+    : null;
+  if (fit?.skills_in_common.length) {
+    facts.push({ id: 'fit:skills', text: `Skills from the job description that the candidate has (from their profile): ${fit.skills_in_common.join(', ')}` });
+  }
+  if (fit?.projects.length) {
+    facts.push({ id: 'fit:projects', text: `The candidate's projects that best match this job: ${fit.projects.map((p) => `${p.name} (shows ${p.matched.join(', ')})`).join('; ')}` });
+  }
 
   return {
     profile,
@@ -224,6 +248,7 @@ export async function buildDraftContext(
     signature: profile.signature?.trim() || defaultSignature(profile),
     templates,
     timezone: settings.timezone,
+    fit,
   };
 }
 
@@ -358,7 +383,18 @@ Hard rules — follow every one:
 8. End with the provided signature block exactly as given.
 9. Respond with a single JSON object and nothing else: {"subject": string, "body": string, "facts_used": string[], "notes": string[]}. "facts_used" lists the fact ids you relied on; "notes" may list caveats for the candidate (e.g. "No job description was provided").`;
 
-function describeTask(ctx: DraftContext, req: { kind: 'initial' | 'follow_up'; goal: AiDraftRequest['goal']; extra_instructions?: string | null }, hasAttachment: boolean): string {
+/** Engineers, managers and founders get a short "could you point me / refer me" ask, not a recruiter pitch. */
+export function recipientIsNotRecruiter(title: string | null | undefined): boolean {
+  if (!title) return false;
+  if (/\b(recruit\w*|talent|people|hr|human resources|hiring|sourc\w*|campus|university relations)\b/i.test(title)) return false;
+  return /\b(engineer\w*|developer|sde|swe|architect|manager|lead|head|director|vp|cto|ceo|founder|co-?founder|scientist|principal|staff)\b/i.test(title);
+}
+
+function describeTask(
+  ctx: DraftContext,
+  req: { kind: 'initial' | 'follow_up'; goal: AiDraftRequest['goal']; extra_instructions?: string | null; avoid_openings?: string[] },
+  hasAttachment: boolean,
+): string {
   const category = classifyRoleCategory(ctx.roleLabel, ctx.opportunity?.description);
   const lines = [
     `Email type: ${req.kind === 'initial' ? 'first outreach' : `follow-up #${ctx.previousMessages.filter((m) => m.kind === 'follow_up').length + 1} to the previous email (same thread)`}`,
@@ -368,6 +404,20 @@ function describeTask(ctx: DraftContext, req: { kind: 'initial' | 'follow_up'; g
     `Length: ${req.kind === 'initial' ? '110–170 words' : '50–90 words'} for the body`,
     `Résumé attached: ${hasAttachment ? 'yes — mention it once, briefly' : 'no — do not mention an attachment'}`,
   ];
+  if (req.kind === 'initial' && ctx.opportunity?.analysis) {
+    lines.push(
+      'Structure: open by connecting ONE of the team\'s priorities (fact job:priorities) to the candidate\'s most relevant project or experience from the facts, in your own words (quote at most 8 words of the job description). Then one or two sentences on matching skills, shown through what the candidate built, not as a list. Never mention skills the candidate lacks and never apologise for gaps.',
+    );
+    lines.push('Subject: specific to this role and the candidate (e.g. role title plus the candidate\'s strongest relevant project or skill), under 70 characters, no clickbait.');
+  }
+  if (req.kind === 'initial' && recipientIsNotRecruiter(ctx.recruiter.title)) {
+    lines.push(
+      `The recipient (${ctx.recruiter.title}) is not a recruiter. Keep the body to 80–120 words and ask whether they would be open to referring the candidate or pointing them to the right hiring contact.`,
+    );
+  }
+  if (req.avoid_openings?.length) {
+    lines.push(`Other people at this company are getting a similar email. Start the body differently from each of these openings and use a different subject line:\n${req.avoid_openings.map((o) => `- ${o.slice(0, 300)}`).join('\n')}`);
+  }
   if (req.kind === 'follow_up') {
     lines.push('Subject must be "Re: " followed by the previous subject exactly.');
     lines.push('Reference the previous email accurately (date and topic). Do not repeat the whole pitch; add at most one new relevant fact.');

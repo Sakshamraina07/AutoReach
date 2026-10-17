@@ -127,13 +127,45 @@ export class GeminiProvider implements AiProvider {
       {
         systemInstruction: { parts: [{ text: req.system }] },
         contents: [{ role: 'user', parts: [{ text: req.user }] }],
-        generationConfig: { temperature: req.temperature, maxOutputTokens: req.maxTokens, ...(req.json ? { responseMimeType: 'application/json' } : {}) },
+        generationConfig: {
+          temperature: req.temperature,
+          // Thinking tokens count against this limit; leave room so the answer isn't cut off.
+          maxOutputTokens: req.maxTokens + geminiThinkingHeadroom(this.model),
+          ...(req.json ? { responseMimeType: 'application/json' } : {}),
+          ...geminiThinkingConfig(this.model),
+        },
       },
       this.timeoutMs,
     );
-    const candidates = json.candidates as { content?: { parts?: { text?: string }[] } }[] | undefined;
-    return (candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+    const candidates = json.candidates as { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[] | undefined;
+    const first = candidates?.[0];
+    const text = (first?.content?.parts ?? [])
+      .filter((p) => !p.thought)
+      .map((p) => p.text ?? '')
+      .join('');
+    if (!text.trim()) {
+      const reason = first?.finishReason ?? (json.promptFeedback as { blockReason?: string } | undefined)?.blockReason ?? 'no text';
+      throw new AiProviderError(`Gemini returned no text (${reason}).`, 502, reason === 'MAX_TOKENS');
+    }
+    return text;
   }
+}
+
+/**
+ * Gemini 3 and 4 models think before answering and can't turn it off; "low" keeps
+ * emails fast and cheap. Gemini 2.5 uses a token budget instead. Older models
+ * don't think. Source: ai.google.dev/gemini-api/docs/generate-content/thinking
+ */
+export function geminiThinkingConfig(model: string): Record<string, unknown> {
+  const m = model.toLowerCase();
+  if (/^gemini-(3|4)/.test(m)) return { thinkingConfig: { thinkingLevel: 'low' } };
+  if (/^gemini-2\.5-flash/.test(m)) return { thinkingConfig: { thinkingBudget: 512 } };
+  if (/^gemini-2\.5-pro/.test(m)) return { thinkingConfig: { thinkingBudget: 1024 } };
+  return {};
+}
+
+function geminiThinkingHeadroom(model: string): number {
+  return /^gemini-(2\.5|3|4)/i.test(model) ? 4096 : 0;
 }
 
 export function createAiProvider(cfg: AppConfig['ai'], fetchImpl: FetchLike): AiProvider | null {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '../src/config.js';
 import type { Deps } from '../src/context.js';
 import { decryptSecret, encryptSecret, pkceChallenge } from '../src/lib/crypto.js';
-import { parseJsonObject } from '../src/services/ai/provider.js';
+import { AiProviderError, GeminiProvider, geminiThinkingConfig, parseJsonObject } from '../src/services/ai/provider.js';
 import { buildMime, encodeHeaderWords, formatAddress, textToHtml } from '../src/services/gmail/mime.js';
 import { GmailApiError, GmailClient } from '../src/services/gmail/client.js';
 import { heuristicExtract } from '../src/services/resumeParser.js';
@@ -104,6 +104,49 @@ describe('AI JSON parsing', () => {
     expect(parseJsonObject('Sure! {"subject":"x","body":"he said \\"}\\" ok"} trailing')).toEqual({ subject: 'x', body: 'he said "}" ok' });
     expect(parseJsonObject('[1,2]')).toBeNull();
     expect(parseJsonObject('nothing')).toBeNull();
+  });
+});
+
+describe('Gemini provider', () => {
+  const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+  it('asks Gemini 3 models to think at "low" and leaves room for thinking in the output limit', async () => {
+    let sent: { url: string; headers: Record<string, string>; body: Record<string, unknown> } | null = null;
+    const fetchImpl = async (url: string | URL, init?: RequestInit) => {
+      sent = { url: String(url), headers: init?.headers as Record<string, string>, body: JSON.parse(String(init?.body)) };
+      return reply({ candidates: [{ content: { parts: [{ text: 'thinking…', thought: true }, { text: '{"ok":true}' }] }, finishReason: 'STOP' }] });
+    };
+    const out = await new GeminiProvider(fetchImpl, 'gemini-3.8-flash', 'test-key').complete({ system: 'sys', user: 'hi', maxTokens: 1200, temperature: 0.4, json: true });
+    expect(out).toBe('{"ok":true}'); // thought parts are never returned as the answer
+    expect(sent!.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
+    expect(sent!.headers['x-goog-api-key']).toBe('test-key');
+    expect(sent!.body.generationConfig).toEqual({
+      temperature: 0.4,
+      maxOutputTokens: 1200 + 4096,
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingLevel: 'low' },
+    });
+    expect(sent!.body.systemInstruction).toEqual({ parts: [{ text: 'sys' }] });
+  });
+
+  it('uses a thinking budget for Gemini 2.5 and nothing for older models', () => {
+    expect(geminiThinkingConfig('gemini-3.5-flash-lite')).toEqual({ thinkingConfig: { thinkingLevel: 'low' } });
+    expect(geminiThinkingConfig('gemini-2.5-flash')).toEqual({ thinkingConfig: { thinkingBudget: 512 } });
+    expect(geminiThinkingConfig('gemini-2.5-pro')).toEqual({ thinkingConfig: { thinkingBudget: 1024 } });
+    expect(geminiThinkingConfig('gemini-1.5-flash')).toEqual({});
+  });
+
+  it('reports an empty answer (e.g. the limit was spent thinking) as a provider error', async () => {
+    const fetchImpl = async () => reply({ candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }] });
+    const err = await new GeminiProvider(fetchImpl, 'gemini-3.8-flash', 'k').complete({ system: 's', user: 'u', maxTokens: 10, temperature: 0, json: false }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AiProviderError);
+    expect((err as AiProviderError).message).toMatch(/MAX_TOKENS/);
+  });
+
+  it('passes on rate limiting as a 429', async () => {
+    const fetchImpl = async () => reply({ error: { message: 'Resource has been exhausted' } }, 429);
+    const err = await new GeminiProvider(fetchImpl, 'gemini-3.8-flash', 'k').complete({ system: 's', user: 'u', maxTokens: 10, temperature: 0, json: false }).catch((e: unknown) => e);
+    expect((err as AiProviderError).status).toBe(429);
   });
 });
 

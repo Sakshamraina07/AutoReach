@@ -21,7 +21,7 @@ import { linkRecruiterToOpportunity } from './recruiters.js';
 export const OPPORTUNITY_SELECT = `
   SELECT o.id, o.company_name AS company, o.company_id, o.title, o.role_category, o.description, o.job_url, o.location,
     o.employment_type, o.required_skills, o.experience_requirements, o.discovered_at, o.deadline, o.status, o.source,
-    o.source_url, o.notes, o.company_notes,
+    o.source_url, o.notes, o.company_notes, o.analysis,
     (SELECT count(*)::int FROM recruiter_opportunities ro WHERE ro.opportunity_id = o.id) AS recruiter_count,
     (SELECT count(*)::int FROM email_messages m WHERE m.opportunity_id = o.id AND m.send_status = 'sent') AS messages_sent,
     (SELECT count(*)::int FROM email_messages m WHERE m.opportunity_id = o.id AND m.reply_status = 'replied') AS replies,

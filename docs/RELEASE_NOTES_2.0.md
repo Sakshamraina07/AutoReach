@@ -43,8 +43,19 @@ Supabase, Railway or Gmail accounts.
   drawer with history); Opportunities (status pipeline, linked recruiters, profile match);
   Outreach (history, message detail with reply and open details); composer; Follow-ups;
   Analytics; Settings; dark and light themes; responsive down to phone width.
-* **Onboarding wizard** with résumé upload, field-by-field confirmed suggestions from the
-  résumé (AI or pattern-based), profile completeness indicator.
+* **Paste a job → cold emails** (`/jobs/new`, the sidebar's **New job**): paste a job
+  description; it is read by the AI provider (or a plain keyword reading without one) and
+  every part of the reading is checked against the pasted text: skills must appear in it,
+  each "what the team cares about" point must quote it word for word, and experience
+  numbers must be written in it. The page shows your fit (skills you have and don't, best
+  projects, experience warnings), a box to paste people (`Name <email>`, `Name, Title, email`
+  or a CSV), and one email per person, written one at a time with a different opening each.
+  Engineers, managers and founders get a shorter referral-style ask. Each email is editable
+  in place, saved as you type, and sent with **Send cold email**; refusals (already emailed,
+  unconfirmed address, quality problems) are confirmed inline. Jobs saved from the extension
+  open on the same page.
+* **Onboarding in three steps**: résumé (read into your profile), check your details, connect
+  Gmail. The time zone comes from the browser; limits and tracking keep their defaults.
 * **Job opportunity tracker** with required skills, experience, deadline, status pipeline and a
   many-to-many link to recruiters.
 * **AI drafting** (optional; Anthropic, OpenAI, Gemini, Groq or any OpenAI-compatible server):

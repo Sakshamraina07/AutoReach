@@ -42,18 +42,21 @@ export default function Opportunities() {
   return (
     <>
       <PageHeader
-        title="Opportunities"
-        description="Job postings and companies you're targeting. Link recruiters to them so every email knows which role it's about."
+        title="Jobs"
+        description="Postings you're going after. Open one to see your fit and the email for each person you're writing to."
         actions={
-          <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setAdding(true)}>
-            Save opportunity
-          </Button>
+          <>
+            <Button onClick={() => setAdding(true)}>Add without a description</Button>
+            <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/jobs/new')}>
+              New job
+            </Button>
+          </>
         }
       />
       <div className="panel">
         <div className="flex flex-wrap items-end justify-between gap-3 px-3 pt-2">
           <Tabs
-            label="Opportunity view"
+            label="Job view"
             value={view}
             onChange={(v) => {
               setView(v);
@@ -67,7 +70,7 @@ export default function Opportunities() {
           />
           <div className="relative mb-2 w-full max-w-xs">
             <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-faint" aria-hidden />
-            <input aria-label="Search opportunities" className="field pl-8" placeholder="Search title, company, location" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+            <input aria-label="Search jobs" className="field pl-8" placeholder="Search title, company, location" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           </div>
         </div>
         {list.isError ? (
@@ -79,8 +82,8 @@ export default function Opportunities() {
             <Spinner />
           </div>
         ) : list.data.items.length === 0 ? (
-          <EmptyState title={search ? 'No opportunities match your search' : 'No opportunities here yet'} action={!search && <Button variant="primary" onClick={() => setAdding(true)}>Save opportunity</Button>}>
-            {!search && 'Paste a job description and AutoReach extracts the skills it asks for, compares them with your profile and tailors your drafts to it.'}
+          <EmptyState title={search ? 'No jobs match your search' : 'No jobs here yet'} action={!search && <Button variant="primary" onClick={() => navigate('/jobs/new')}>New job</Button>}>
+            {!search && 'Paste a job description. AutoReach reads what the team asks for, compares it with your profile and writes an email for each person you add.'}
           </EmptyState>
         ) : (
           <>
@@ -98,7 +101,7 @@ export default function Opportunities() {
                 </thead>
                 <tbody>
                   {list.data.items.map((o) => (
-                    <tr key={o.id} className="cursor-pointer" onClick={() => navigate(`/opportunities/${o.id}`)}>
+                    <tr key={o.id} className="cursor-pointer" onClick={() => navigate(`/jobs/${o.id}`)}>
                       <td className="max-w-[320px]">
                         <div className="truncate text-ink">{o.title}</div>
                         <div className="truncate text-2xs text-faint">

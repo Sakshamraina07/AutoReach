@@ -37,8 +37,8 @@ export default function OpportunityPage() {
 
   return (
     <>
-      <Link to="/opportunities" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
-        <ArrowLeft className="h-4 w-4" /> Opportunities
+      <Link to={`/jobs/${id}`} className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink">
+        <ArrowLeft className="h-4 w-4" /> Emails for this job
       </Link>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

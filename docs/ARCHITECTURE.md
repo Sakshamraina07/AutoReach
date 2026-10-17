@@ -186,6 +186,27 @@ select opportunity/role → select recruiter → select résumé → Generate (A
 
 ### 4.3 AI drafting
 
+**Job page** (`backend/src/services/jobs.ts`, `packages/shared/src/jobs.ts`,
+`dashboard/src/pages/JobPage.tsx`):
+
+1. `POST /api/jobs/analyze` reads a pasted job description. A keyword reading
+   (`heuristicJobAnalysis`) always runs; with AI configured the model's JSON is passed through
+   `sanitizeJobAnalysis`, which keeps only skills found in the text, priorities whose quote is
+   a verbatim substring of it, responsibilities mostly in its words, experience years written
+   in it, and a company and title that appear in it. The AI call happens before a database
+   transaction is opened. AI errors fall back to the keyword reading with a note.
+2. `POST /api/jobs` saves it as an opportunity (status `ready`, `analysis` JSON); the same
+   posting URL updates the same job.
+3. `POST /api/jobs/:id/recruiters` parses pasted contacts (`parseContactsPaste`), links saved
+   ones (filling a missing name or title) and creates the rest under the job's company.
+4. `POST /api/jobs/:id/recruiters/:recruiterId/email` returns that person's email: the saved
+   draft or sent message if there is one, otherwise a new draft. The recruiter row is locked so
+   two requests write one draft. The draft facts add `job:priorities` (with quotes),
+   `job:must_have`, `fit:skills` (only the concrete skills the profile lists) and
+   `fit:projects`; the openings of the other emails on the job are passed as `avoid_openings`;
+   engineers, managers and founders get a short referral ask. Nothing is sent here: the page
+   sends through the normal `POST /api/messages/:id/send` with an idempotency key.
+
 - `AiProvider` interface with implementations for **Anthropic**, **OpenAI-compatible** endpoints
   (OpenAI, Groq, OpenRouter, a local Ollama server) and **Google Gemini**, selected by
   `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`, `AI_BASE_URL`. Keys exist only on the server.
@@ -267,7 +288,7 @@ timezone (`user_settings.timezone`, detected at onboarding).
 | Resume | `resumes` | Private storage path, SHA-256, size, extracted text, label, role tags, one default per user |
 | Company | `companies` | Normalised name per user; created implicitly |
 | Recruiter | `recruiters` (legacy table, extended) | `email_normalized` unique per user among non-merged rows; `merged_into_id`; `email_verification`; `do_not_contact`; tags |
-| JobOpportunity | `opportunities` | Status pipeline; required skills; role category |
+| JobOpportunity | `opportunities` | Status pipeline; required skills; role category; `analysis` (the checked reading of the pasted job description, JSON) |
 | RecruiterOpportunity | `recruiter_opportunities` | Many-to-many |
 | EmailMessage | `email_messages` (legacy `email_history`, renamed in place) | Send state, Gmail ids, tracking aggregates, reply status, AI metadata, attachment snapshot |
 | EmailEvent | `email_events` | Tracking events with classification |

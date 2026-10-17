@@ -155,6 +155,7 @@ export function outreachRoutes(deps: Deps, limiters: { ai: RequestHandler; send:
         opportunity_id: prev.opportunity_id,
         manual_role: prev.manual_role,
         resume_id: prev.resume_id,
+        avoid_openings: [],
         kind: 'follow_up',
         goal: 'interview_consideration',
         use_template: opts.use_template,

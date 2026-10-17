@@ -3,22 +3,19 @@ import { Check, FileText, LogOut } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cleanProfile, ExtractFromResumeDialog, ProfileEditor, profileToForm, type ProfileForm } from '../components/ProfileEditor';
-import { Badge, Button, ErrorState, Field, Spinner, Toggle, useToast } from '../components/ui';
+import { Badge, Button, ErrorState, Spinner, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { browserTimezone, fmtResumeSize } from '../lib/format';
 import { useInvalidate, useMe, useResumes } from '../lib/queries';
 import { startGmailConnect } from '../lib/gmail';
-import { ResumeUpload, TimezoneSelect } from './Settings';
+import { ResumeUpload } from './Settings';
 
+/** Three steps, done once. Everything else has a sensible default and lives in Settings. */
 const STEPS = [
-  { id: 'resume', title: 'Your résumé', intro: 'Upload the PDF you want attached to your emails. AutoReach can also read it to fill in your profile; you confirm every field.' },
-  { id: 'about', title: 'About you', intro: 'Recruiters see your name and contact details in every email.' },
-  { id: 'goals', title: 'What you want', intro: 'Target roles help AutoReach pick the right projects and skills to mention.' },
-  { id: 'background', title: 'Skills and projects', intro: 'Drafts only mention skills, projects and achievements listed here. Add the ones you can talk about confidently.' },
-  { id: 'voice', title: 'Links and tone', intro: 'Links go in your signature. Tone sets how drafts sound; you can change it per email.' },
-  { id: 'gmail', title: 'Connect Gmail', intro: 'Emails are sent from your own Gmail account and appear in your Sent folder.' },
-  { id: 'prefs', title: 'Preferences', intro: 'You can change all of these later in Settings.' },
+  { id: 'resume', title: 'Your résumé', intro: 'Upload the PDF you send to recruiters. AutoReach reads it and fills in your profile, so you don’t type it all again.' },
+  { id: 'details', title: 'Check your details', intro: 'Emails only mention what’s here: your skills, projects and experience. Fix anything the reading got wrong and remove what you can’t talk about confidently.' },
+  { id: 'gmail', title: 'Connect Gmail', intro: 'Emails go from your own Gmail account and appear in your Sent folder. Nothing is sent until you press Send.' },
 ] as const;
 type StepId = (typeof STEPS)[number]['id'];
 
@@ -78,12 +75,12 @@ export default function Onboarding() {
   if (me.isError) return <div className="p-8"><ErrorState error={me.error} onRetry={() => me.refetch()} /></div>;
   if (!me.data || !form) return <div className="p-8"><Spinner /></div>;
   const current: StepId = STEPS[step]!.id;
-  const profileStep = current === 'about' || current === 'goals' || current === 'background' || current === 'voice';
+  const profileStep = current === 'details';
 
   async function next() {
     if (!form) return;
     setError(null);
-    if (current === 'about' && !form.full_name.trim()) {
+    if (current === 'details' && !form.full_name.trim()) {
       setError(new Error('Add your name so recruiters know who is writing.'));
       return;
     }
@@ -148,26 +145,26 @@ export default function Onboarding() {
           <p className="mb-6 mt-1 max-w-prose text-sm text-muted">{STEPS[step]!.intro}</p>
 
           {current === 'resume' && <ResumeStep form={form} setForm={setForm} />}
-          {current === 'about' && <ProfileEditor value={form} onChange={setForm} sections={['basics', 'education']} />}
-          {current === 'goals' && <ProfileEditor value={form} onChange={setForm} sections={['goals']} />}
-          {current === 'background' && <BackgroundStep form={form} setForm={setForm} />}
-          {current === 'voice' && <ProfileEditor value={form} onChange={setForm} sections={['links', 'voice']} />}
-          {current === 'gmail' && <GmailStep />}
-          {current === 'prefs' && (
-            <PrefsStep
-              onFinish={async () => {
-                await api('/api/profile/complete-onboarding', { method: 'POST' });
-                try {
-                  sessionStorage.removeItem(STORAGE_KEY);
-                } catch {
-                  /* ignore */
-                }
-                await invalidate();
-                navigate('/', { replace: true });
-              }}
-              onEditName={() => setStep(STEPS.findIndex((s) => s.id === 'about'))}
-              hasName={!!form.full_name.trim()}
-            />
+          {current === 'details' && <ProfileEditor value={form} onChange={setForm} sections={['basics', 'education', 'skills', 'projects', 'experience', 'links']} />}
+          {current === 'gmail' && (
+            <>
+              <GmailStep />
+              <FinishStep
+                onFinish={async () => {
+                  await api('/api/profile/complete-onboarding', { method: 'POST' });
+                  try {
+                    sessionStorage.removeItem(STORAGE_KEY);
+                  } catch {
+                    /* ignore */
+                  }
+                  await invalidate();
+                  navigate('/jobs/new', { replace: true });
+                }}
+                onEditName={() => setStep(STEPS.findIndex((s) => s.id === 'details'))}
+                hasName={!!form.full_name.trim()}
+                onBack={() => setStep(step - 1)}
+              />
+            </>
           )}
 
           {error ? (
@@ -176,7 +173,7 @@ export default function Onboarding() {
             </div>
           ) : null}
 
-          {current !== 'prefs' && (
+          {current !== 'gmail' && (
             <div className="mt-8 flex items-center gap-2 border-t border-line pt-4">
               {step > 0 && (
                 <Button variant="ghost" onClick={() => setStep(step - 1)}>
@@ -184,9 +181,9 @@ export default function Onboarding() {
                 </Button>
               )}
               <Button variant="primary" loading={saving} onClick={next}>
-                {current === 'resume' || current === 'gmail' ? 'Continue' : 'Save and continue'}
+                {current === 'resume' ? 'Continue' : 'Save and continue'}
               </Button>
-              {(current === 'resume' || current === 'gmail') && <span className="text-xs text-faint">You can do this later in Settings.</span>}
+              {current === 'resume' && <span className="text-xs text-faint">No résumé handy? Continue and fill in the details yourself.</span>}
             </div>
           )}
         </main>
@@ -239,10 +236,6 @@ function ResumeStep({ form, setForm }: { form: ProfileForm; setForm: (f: Profile
   );
 }
 
-function BackgroundStep({ form, setForm }: { form: ProfileForm; setForm: (f: ProfileForm) => void }) {
-  return <ProfileEditor value={form} onChange={setForm} sections={['skills', 'projects', 'experience']} />;
-}
-
 function GmailStep() {
   const me = useMe();
   const toast = useToast();
@@ -287,21 +280,22 @@ function GmailStep() {
   );
 }
 
-function PrefsStep({ onFinish, onEditName, hasName }: { onFinish: () => Promise<void>; onEditName: () => void; hasName: boolean }) {
+/**
+ * Finishing sets the time zone from this browser (used for the daily limit, business days
+ * and scheduled sends). Limits, tone and open detection keep their defaults; all are in Settings.
+ */
+function FinishStep({ onFinish, onEditName, hasName, onBack }: { onFinish: () => Promise<void>; onEditName: () => void; hasName: boolean; onBack: () => void }) {
   const me = useMe();
   const s = me.data!.settings;
-  const [timezone, setTimezone] = useState(() => (s.timezone === 'UTC' ? browserTimezone() : s.timezone));
-  const [tracking, setTracking] = useState(s.tracking_enabled);
-  const [limit, setLimit] = useState(s.daily_send_limit);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
-  const trackingAvailable = me.data!.tracking.configured;
+  const timezone = s.timezone === 'UTC' ? browserTimezone() : s.timezone;
 
   async function finish() {
     setBusy(true);
     setError(null);
     try {
-      await api('/api/settings', { method: 'PATCH', body: { timezone, tracking_enabled: trackingAvailable ? tracking : false, daily_send_limit: limit } });
+      if (timezone !== s.timezone) await api('/api/settings', { method: 'PATCH', body: { timezone } });
       await onFinish();
     } catch (e) {
       setError(e);
@@ -310,41 +304,25 @@ function PrefsStep({ onFinish, onEditName, hasName }: { onFinish: () => Promise<
   }
 
   return (
-    <div className="space-y-5">
-      <Field label="Your time zone" htmlFor="ob-tz" hint="Used for business days, the daily limit and scheduled sends.">
-        <TimezoneSelect id="ob-tz" value={timezone} onChange={setTimezone} />
-      </Field>
-      <Field label="Daily sending limit" htmlFor="ob-limit" hint="A modest limit keeps outreach personal. Between 10 and 25 is typical for a job search.">
-        <div className="flex items-center gap-2">
-          <input id="ob-limit" type="number" min={1} max={200} className="field w-24" value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
-          <span className="text-sm text-muted">emails per day</span>
-        </div>
-      </Field>
-      <div className="rounded border border-line px-4 py-2">
-        <Toggle
-          label="Detect opens (optional)"
-          disabled={!trackingAvailable}
-          description={
-            trackingAvailable
-              ? 'Adds an invisible image to each email. When the recipient’s mail app loads images, you see “open detected”. It’s approximate: some apps block images, and others load them without anyone reading. Recipients aren’t told about it. Off by default.'
-              : 'Not available on this server.'
-          }
-          checked={tracking && trackingAvailable}
-          onChange={setTracking}
-        />
-      </div>
+    <div className="mt-8 space-y-4 border-t border-line pt-4">
+      <p className="max-w-prose text-xs text-faint">
+        Defaults you can change in Settings: up to {s.daily_send_limit} emails a day, a follow-up reminder after {s.followup_delay_business_days} business days, open detection {s.tracking_enabled && me.data?.tracking.configured ? 'on' : 'off'}, times shown in {timezone.replace(/_/g, ' ')}.
+      </p>
       {!hasName && (
         <p className="text-sm text-warn">
           Add your name before finishing.{' '}
           <button type="button" className="font-medium text-accent hover:underline" onClick={onEditName}>
-            Go to About you
+            Go to your details
           </button>
         </p>
       )}
       {error ? <ErrorState error={error} /> : null}
-      <div className="flex gap-2 border-t border-line pt-4">
-        <Button variant="primary" loading={busy} disabled={!hasName || !Number.isInteger(limit) || limit < 1 || limit > 200} onClick={finish}>
-          Finish setup
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" onClick={onBack}>
+          Back
+        </Button>
+        <Button variant={me.data?.gmail.connected ? 'primary' : 'secondary'} loading={busy} disabled={!hasName} onClick={finish}>
+          {me.data?.gmail.connected ? 'Finish and paste a job' : 'Finish without Gmail'}
         </Button>
       </div>
     </div>

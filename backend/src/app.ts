@@ -8,6 +8,7 @@ import type { Deps } from './context.js';
 import { ensureUserRows, errorHandler, requireAuth } from './http/support.js';
 import { coreRoutes } from './http/routes/core.js';
 import { crmRoutes } from './http/routes/crm.js';
+import { jobRoutes } from './http/routes/jobs.js';
 import { outreachRoutes } from './http/routes/outreach.js';
 import { publicRoutes } from './http/routes/public.js';
 
@@ -94,6 +95,7 @@ export function createApp(deps: Deps): Express {
   api.use(ensureUserRows(deps));
   api.use(coreRoutes(deps, limiters));
   api.use(crmRoutes(deps));
+  api.use(jobRoutes(deps, limiters));
   api.use(outreachRoutes(deps, limiters));
   app.use('/api', api);
 

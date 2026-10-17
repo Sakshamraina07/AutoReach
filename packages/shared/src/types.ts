@@ -1,3 +1,4 @@
+import type { JobAnalysis, JobFit } from './jobs.js';
 /**
  * Response shapes of the AutoReach API. Timestamps are ISO-8601 UTC strings;
  * clients render them in the user's timezone (UserSettings.timezone).
@@ -184,6 +185,8 @@ export interface Opportunity {
   source_url: string | null;
   notes: string | null;
   company_notes: string | null;
+  /** The job-description analysis the candidate confirmed (null for opportunities saved without one). */
+  analysis: JobAnalysis | null;
   recruiter_count: number;
   messages_sent: number;
   replies: number;
@@ -353,4 +356,34 @@ export interface RecruiterLookupResult {
   email: string;
   recruiter: RecruiterSummary | null;
   messages: MessageSummary[];
+}
+
+/* ---------------- "Paste a job" screen ---------------- */
+
+export interface JobAnalysisResult {
+  analysis: JobAnalysis;
+  fit: JobFit;
+}
+
+export interface JobView {
+  opportunity: Opportunity;
+  analysis: JobAnalysis | null;
+  fit: JobFit | null;
+  recruiters: RecruiterSummary[];
+  /** The latest email to each person about this job (draft, queued or sent), keyed by recruiter id. */
+  emails: Record<string, MessageSummary>;
+}
+
+export interface JobPasteResult extends JobView {
+  added: number;
+  already_saved: number;
+  /** Pasted lines that had no email address. */
+  skipped: string[];
+}
+
+export interface PreparedEmail {
+  message: MessageDetail;
+  /** Set when a new version was written just now. */
+  draft: DraftResult | null;
+  quality: QualityFinding[];
 }

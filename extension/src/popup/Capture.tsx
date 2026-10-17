@@ -131,13 +131,16 @@ export function CaptureView({ onDone }: { onDone: () => void }) {
           <Check className="h-4 w-4 text-replied" /> Saved {saved.opportunity.title} at {saved.opportunity.company}.
         </p>
         {saved.note && <p className="text-xs text-warn">{saved.note}</p>}
+        <p className="text-xs text-muted">The dashboard reads the job description, shows your fit and writes an email for each person you add. Nothing is sent until you press Send.</p>
         <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => void chrome.tabs.create({ url: dashboardLink(`/jobs/${saved.opportunity.id}`) })}>
+            Write cold emails
+          </Button>
           {saved.recruiter && (
-            <Button variant="primary" onClick={() => openComposer({ recruiterId: saved.recruiter!.id, opportunityId: saved.opportunity.id })}>
-              Write to {saved.recruiter.full_name?.split(' ')[0] ?? saved.recruiter.email}
+            <Button onClick={() => openComposer({ recruiterId: saved.recruiter!.id, opportunityId: saved.opportunity.id })}>
+              Write to {saved.recruiter.full_name?.split(' ')[0] ?? saved.recruiter.email} here
             </Button>
           )}
-          <Button onClick={() => void chrome.tabs.create({ url: dashboardLink(`/opportunities/${saved.opportunity.id}`) })}>Open in dashboard</Button>
           <Button variant="ghost" onClick={onDone}>
             Done
           </Button>

@@ -12,9 +12,15 @@ reminded when to follow up.
 
 ## What it does
 
+* **Paste a job, get the emails**: paste a job description and AutoReach reads it (what the
+  team cares about, quoted from the posting; must-have and nice-to-have skills; experience),
+  shows how your profile fits, and writes a separate email for each person you paste in.
+  Each email opens with one of the team's priorities and the project of yours that matches it.
+  You read it, edit if you like, and press **Send cold email**. It never applies to jobs and
+  never sends on its own.
 * **Recruiter CRM**: search, filter, tags, notes, CSV import/export, duplicate detection by
   normalised email, merges that keep history, links to job opportunities.
-* **Opportunity tracker**: saved postings with skills, deadline and a status pipeline from
+* **Job tracker**: saved postings with skills, deadline and a status pipeline from
   "saved" to "offer".
 * **Role-specific drafts**: from your verified profile, projects and the job posting, with AI
   (Anthropic, OpenAI, Gemini, Groq or any OpenAI-compatible server) or from your templates.

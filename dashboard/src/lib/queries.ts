@@ -6,6 +6,7 @@ import type {
   DuplicateSuggestion,
   FollowUp,
   Insight,
+  JobView,
   MeResponse,
   MessageDetail,
   MessageSummary,
@@ -41,6 +42,8 @@ export const keys = {
   activity: (p: object) => ['activity', p] as const,
   analytics: (kind: string, p: object) => ['analytics', kind, p] as const,
   reviewQueue: ['review-queue'] as const,
+  job: (id: string) => ['job', id] as const,
+  suggested: (id: string) => ['job', id, 'suggested'] as const,
 };
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: () => api<MeResponse>('/api/me'), staleTime: 15_000 });
@@ -71,6 +74,10 @@ export const useOpportunities = (p: { q?: string; status?: string; active?: stri
   useQuery({ queryKey: keys.opportunities(p), queryFn: () => api<Paginated<Opportunity>>(`/api/opportunities${qs({ ...p })}`), placeholderData: keepPreviousData });
 export const useOpportunity = (id: string | null) =>
   useQuery({ queryKey: keys.opportunity(id ?? 'none'), queryFn: () => api<OpportunityDetail>(`/api/opportunities/${id}`), enabled: !!id });
+
+export const useJob = (id: string) => useQuery({ queryKey: keys.job(id), queryFn: () => api<JobView>(`/api/jobs/${id}`) });
+export const useSuggestedRecruiters = (id: string) =>
+  useQuery({ queryKey: keys.suggested(id), queryFn: () => api<{ recruiters: RecruiterSummary[] }>(`/api/jobs/${id}/suggested-recruiters`).then((r) => r.recruiters) });
 
 export const useMessages = (p: Record<string, string | number | undefined>) =>
   useQuery({ queryKey: keys.messages(p), queryFn: () => api<Paginated<MessageSummary>>(`/api/messages${qs(p)}`), placeholderData: keepPreviousData, refetchInterval: 30_000 });
@@ -118,7 +125,7 @@ export const useReviewQueue = () => useQuery({ queryKey: keys.reviewQueue, query
 export function useInvalidate() {
   const qc = useQueryClient();
   return (...extra: QueryKey[]) => {
-    const prefixes: QueryKey[] = [['me'], ['recruiters'], ['recruiter'], ['opportunities'], ['opportunity'], ['messages'], ['message'], ['followups'], ['activity'], ['analytics'], ['review-queue'], ...extra];
+    const prefixes: QueryKey[] = [['me'], ['recruiters'], ['recruiter'], ['opportunities'], ['opportunity'], ['job'], ['messages'], ['message'], ['followups'], ['activity'], ['analytics'], ['review-queue'], ...extra];
     return Promise.all(prefixes.map((k) => qc.invalidateQueries({ queryKey: k })));
   };
 }
