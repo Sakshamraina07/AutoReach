@@ -39,6 +39,7 @@ const me: MeResponse = {
   gmail: { configured: true, connected: true, account_email: 'sam@student-mail.dev', status: 'active', can_send: true, can_detect_replies: true, reply_detection_enabled: true, scopes: [], last_sync_at: null, sync_error: null },
   ai: { configured: true, provider: 'gemini', model: 'gemini-3.8-flash' },
   tracking: { configured: false, public_base_url: null },
+    career_ops: { configured: false },
   completeness: { percent: 100, items: [] },
   onboarding_completed: true,
   sent_today: 0,

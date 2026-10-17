@@ -92,6 +92,7 @@ function JobPage({ id }: { id: string }) {
             {o.location ? `, ${o.location}` : ''}
             {o.employment_type !== 'unknown' ? `. ${EMPLOYMENT_TYPE_LABELS[o.employment_type]}` : ''}
             {o.deadline ? `. Apply by ${fmtDate(o.deadline)}` : ''}
+            {typeof o.career_ops_score === 'number' ? `. career-ops score ${o.career_ops_score.toFixed(1)}/5` : ''}
             {o.job_url && (
               <>
                 {'. '}

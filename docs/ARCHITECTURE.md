@@ -184,6 +184,22 @@ select opportunity/role → select recruiter → select résumé → Generate (A
   (plain + HTML), base64 wrapped at 76 columns, RFC 2231 attachment filename, and the tracking pixel
   only in the HTML part and only when tracking is enabled for that message.
 
+### 4.2b career-ops bridge and job links
+
+- `services/careerOps.ts` reads a local career-ops folder (`CAREER_OPS_DIR`, following its
+  `.career-ops-data` marker): `reports/{###}-{slug}-{date}.md` headers (company, role, score,
+  URL, legitimacy), the verbatim `## Job Description` section (career-ops' own
+  `check-jd-archive.mjs` rules: no placeholders, pointers, sign-in walls or paraphrases),
+  `jds/{###}-…` captures (`.md`, `.txt`, `.pdf` via unpdf) and statuses from
+  `data/applications.md` matched by report link. File names come only from directory
+  listings. `importCareerOpsJob` runs the normal analyze → save path, records
+  `opportunities.career_ops_report/score` (unique per user and report) and returns the job.
+  Access requires `CAREER_OPS_OWNER_EMAIL` to match the signed-in email when set (always in
+  production).
+- `services/jobFetch.ts` reads Greenhouse (`boards-api.greenhouse.io`), Lever
+  (`api.lever.co` / `api.eu.lever.co`) and Ashby (`api.ashbyhq.com/posting-api`) public
+  posting APIs for links of those boards' exact shapes; no other host is ever contacted.
+
 ### 4.3 AI drafting
 
 **Job page** (`backend/src/services/jobs.ts`, `packages/shared/src/jobs.ts`,

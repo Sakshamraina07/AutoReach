@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret, pkceChallenge } from '../src/lib/crypto.j
 import { AiProviderError, GeminiProvider, geminiThinkingConfig, parseJsonObject } from '../src/services/ai/provider.js';
 import { buildMime, encodeHeaderWords, formatAddress, textToHtml } from '../src/services/gmail/mime.js';
 import { GmailApiError, GmailClient } from '../src/services/gmail/client.js';
+import { fetchJobFromBoard, htmlToText, jobBoardTarget } from '../src/services/jobFetch.js';
 import { heuristicExtract } from '../src/services/resumeParser.js';
 import { classifyOpen, uaFamily } from '../src/services/tracking.js';
 import { parseMime } from './helpers/fakeGoogle.js';
@@ -150,6 +151,64 @@ describe('Gemini provider', () => {
   });
 });
 
+describe('reading a posting from its job board', () => {
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  const LONG = 'Build and maintain REST APIs in Node.js and TypeScript that serve merchant dashboards. Work with PostgreSQL.';
+
+  it('only knows the three boards, and only their posting links', () => {
+    expect(jobBoardTarget('https://boards.greenhouse.io/northwind/jobs/4012345')).toEqual({ board: 'greenhouse', api: 'https://boards-api.greenhouse.io/v1/boards/northwind/jobs/4012345' });
+    expect(jobBoardTarget('https://job-boards.greenhouse.io/northwind/jobs/4012345')?.board).toBe('greenhouse');
+    expect(jobBoardTarget('https://jobs.lever.co/northwind/5f1c2a3b-aaaa-bbbb-cccc-1234567890ab')).toEqual({ board: 'lever', api: 'https://api.lever.co/v0/postings/northwind/5f1c2a3b-aaaa-bbbb-cccc-1234567890ab' });
+    expect(jobBoardTarget('https://jobs.eu.lever.co/northwind/abc-123/apply')?.api).toBe('https://api.eu.lever.co/v0/postings/northwind/abc-123');
+    expect(jobBoardTarget('https://jobs.ashbyhq.com/northwind/0a1b2c3d-1111-2222-3333-444455556666/application')).toMatchObject({ board: 'ashby', api: 'https://api.ashbyhq.com/posting-api/job-board/northwind', jobId: '0a1b2c3d-1111-2222-3333-444455556666' });
+    // Anything else, or anything that tries to steer the request, is refused.
+    expect(jobBoardTarget('https://www.linkedin.com/jobs/view/123')).toBeNull();
+    expect(jobBoardTarget('https://boards.greenhouse.io/northwind/jobs/12ab')).toBeNull();
+    expect(jobBoardTarget('https://boards.greenhouse.io/north%2F..%2Fwind/jobs/1')).toBeNull();
+    expect(jobBoardTarget('https://evil.example/boards.greenhouse.io/x/jobs/1')).toBeNull();
+    expect(jobBoardTarget('javascript:alert(1)')).toBeNull();
+  });
+
+  it("turns board HTML (Greenhouse's arrives entity-encoded) into readable text", () => {
+    expect(htmlToText('&lt;p&gt;You will build &amp;amp; ship APIs.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Node.js&lt;/li&gt;&lt;li&gt;SQL&lt;/li&gt;&lt;/ul&gt;')).toBe('You will build & ship APIs.\n\n- Node.js\n- SQL');
+    expect(htmlToText('<p>Café&nbsp;team<br>Remote</p>')).toBe('Café team\nRemote');
+  });
+
+  it('reads Greenhouse, Lever and Ashby postings', async () => {
+    const calls: string[] = [];
+    const fetchImpl = async (input: string | URL) => {
+      const u = String(input);
+      calls.push(u);
+      if (u.startsWith('https://boards-api.greenhouse.io/')) return json({ title: 'Backend Intern', location: { name: 'Bengaluru' }, content: `&lt;p&gt;${LONG}&lt;/p&gt;` });
+      if (u.startsWith('https://api.lever.co/')) return json({ text: 'Backend Intern', categories: { location: 'Pune' }, descriptionPlain: LONG, lists: [{ text: 'Requirements', content: '<li>Git</li>' }], additionalPlain: '' });
+      if (u.startsWith('https://api.ashbyhq.com/')) {
+        return json({ jobs: [
+          { title: 'Other role', jobUrl: 'https://jobs.ashbyhq.com/northwind/other-id', descriptionPlain: 'x'.repeat(200) },
+          { title: 'Backend Intern', location: 'Remote', jobUrl: 'https://jobs.ashbyhq.com/northwind/job-42', descriptionPlain: LONG },
+        ] });
+      }
+      return json({}, 404);
+    };
+    const gh = await fetchJobFromBoard(fetchImpl, 'https://boards.greenhouse.io/northwind/jobs/4012345');
+    expect(gh).toMatchObject({ board: 'greenhouse', title: 'Backend Intern', location: 'Bengaluru' });
+    expect(gh!.text).toContain('REST APIs in Node.js');
+    const lv = await fetchJobFromBoard(fetchImpl, 'https://jobs.lever.co/northwind/abc-123');
+    expect(lv!.text).toMatch(/Requirements\n- Git/);
+    const ab = await fetchJobFromBoard(fetchImpl, 'https://jobs.ashbyhq.com/northwind/job-42');
+    expect(ab).toMatchObject({ board: 'ashby', title: 'Backend Intern', location: 'Remote' });
+    expect(await fetchJobFromBoard(fetchImpl, 'https://jobs.ashbyhq.com/northwind/closed-job')).toBeNull();
+    expect(await fetchJobFromBoard(fetchImpl, 'https://example.org/careers/1')).toBeNull();
+    // Only the boards' own API hosts were contacted.
+    expect(calls.every((u) => /^https:\/\/(boards-api\.greenhouse\.io|api\.lever\.co|api\.ashbyhq\.com)\//.test(u))).toBe(true);
+  });
+
+  it('reports a closed or empty posting as not found', async () => {
+    expect(await fetchJobFromBoard(async () => json({}, 404), 'https://boards.greenhouse.io/n/jobs/1')).toBeNull();
+    expect(await fetchJobFromBoard(async () => json({ title: 'x', content: '&lt;p&gt;short&lt;/p&gt;' }), 'https://boards.greenhouse.io/n/jobs/1')).toBeNull();
+    expect(await fetchJobFromBoard(async () => { throw new TypeError('fetch failed'); }, 'https://boards.greenhouse.io/n/jobs/1')).toBeNull();
+  });
+});
+
 describe('résumé heuristics', () => {
   it('extracts only what is present', () => {
     const r = heuristicExtract('Asha Verma\nasha.v@mail.dev\nEducation\nB.E. Information Technology, Example College of Engineering, 2025\nProjects\nPayTrack\n- Expense tracker in Flutter and Firebase serving 300 users');
@@ -177,6 +236,10 @@ describe('configuration', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/STORAGE_DRIVER=local is for development only/);
     expect(() => loadConfig({ ...base, TOKEN_ENCRYPTION_KEY: 'short' })).toThrow(/32 bytes/);
     expect(() => loadConfig({ ...base, ENABLE_DEV_LOGIN: 'true', DEV_JWT_SECRET: 's', DATABASE_URL: 'postgres://u@db.example.com/x' })).toThrow(/only allowed with a local database/);
+    // A career-ops folder on a hosted server must name its owner.
+    const prod = { ...base, NODE_ENV: 'production', STORAGE_DRIVER: 'supabase', SUPABASE_SERVICE_ROLE_KEY: 'k' };
+    expect(() => loadConfig({ ...prod, CAREER_OPS_DIR: '/srv/career-ops' })).toThrow(/CAREER_OPS_OWNER_EMAIL/);
+    expect(loadConfig({ ...prod, CAREER_OPS_DIR: '/srv/career-ops', CAREER_OPS_OWNER_EMAIL: 'Me@Example.dev' }).careerOps).toEqual({ dir: '/srv/career-ops', ownerEmail: 'me@example.dev' });
   });
   it('disables optional integrations with an explicit reason', () => {
     const c = loadConfig(base);

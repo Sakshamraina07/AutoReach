@@ -61,6 +61,11 @@ const EnvSchema = z.object({
   /** Optional: the only extension IDs allowed to receive Gmail connection codes. */
   EXTENSION_IDS: optionalString,
 
+  /** Optional: a career-ops folder on this computer whose evaluated jobs appear in the dashboard. */
+  CAREER_OPS_DIR: optionalString,
+  /** The one signed-in email allowed to read CAREER_OPS_DIR (required in production). */
+  CAREER_OPS_OWNER_EMAIL: optionalString,
+
   WORKERS_ENABLED: bool(true),
   ENABLE_DEV_LOGIN: bool(false),
   DEV_JWT_SECRET: optionalString,
@@ -114,6 +119,7 @@ export interface AppConfig {
   };
   hunterApiKey?: string;
   tracking: { configured: boolean; reason?: string };
+  careerOps: { dir: string | undefined; ownerEmail: string | undefined };
   workersEnabled: boolean;
   devLogin: { enabled: boolean; secret?: string };
 }
@@ -199,6 +205,13 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     aiProvider = null;
   }
 
+  // career-ops: a local folder, read only by its owner.
+  const careerOpsOwner = e.CAREER_OPS_OWNER_EMAIL?.toLowerCase();
+  if (careerOpsOwner && !/^[^@\s]+@[^@\s]+$/.test(careerOpsOwner)) problems.push('CAREER_OPS_OWNER_EMAIL must be an email address.');
+  if (e.CAREER_OPS_DIR && isProd && !careerOpsOwner) {
+    problems.push('CAREER_OPS_DIR in production requires CAREER_OPS_OWNER_EMAIL, so only you can read that folder.');
+  }
+
   // Tracking: the pixel URL must be reachable by mail clients.
   let trackingReason: string | undefined;
   if (!/^https:\/\//.test(e.API_PUBLIC_URL)) {
@@ -252,6 +265,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     hunterApiKey: e.HUNTER_API_KEY,
     tracking: { configured: !trackingReason, reason: trackingReason },
+    careerOps: { dir: e.CAREER_OPS_DIR, ownerEmail: careerOpsOwner },
     workersEnabled: e.WORKERS_ENABLED,
     devLogin: { enabled: devLoginEnabled, secret: e.DEV_JWT_SECRET },
   };

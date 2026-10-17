@@ -54,6 +54,15 @@ Supabase, Railway or Gmail accounts.
   in place, saved as you type, and sent with **Send cold email**; refusals (already emailed,
   unconfirmed address, quality problems) are confirmed inline. Jobs saved from the extension
   open on the same page.
+* **career-ops on the same computer** ([CAREER_OPS.md](CAREER_OPS.md)): with `CAREER_OPS_DIR`
+  set, a **From career-ops** page lists its evaluation reports by score (low scores and
+  skipped jobs hidden), and **Write emails** turns one into a job page. The description comes
+  from the report's verbatim section, a saved `jds/` copy (text or PDF), or the posting's
+  Greenhouse/Lever/Ashby public API, in that order; paraphrases and sign-in pages are never
+  used. Each report imports once. AutoReach can also write career-ops' `cv.md` from the
+  profile (never replacing one). Read-only otherwise; `CAREER_OPS_OWNER_EMAIL` limits it to
+  one account.
+* **Job links**: on New job, a Greenhouse, Lever or Ashby link fills in the description.
 * **Onboarding in three steps**: résumé (read into your profile), check your details, connect
   Gmail. The time zone comes from the browser; limits and tracking keep their defaults.
 * **Job opportunity tracker** with required skills, experience, deadline, status pipeline and a

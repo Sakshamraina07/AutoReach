@@ -1,6 +1,6 @@
 import type { JobAnalysisResult, JobView } from '@autoreach/shared';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, ErrorState, Field, PageHeader } from '../components/ui';
 import { api } from '../lib/api';
 import { useInvalidate, useMe } from '../lib/queries';
@@ -15,8 +15,13 @@ export default function JobNew() {
   const navigate = useNavigate();
   const invalidate = useInvalidate();
   const me = useMe();
+  // Arriving from career-ops (or anywhere else) with the posting's link and names.
+  const [params] = useSearchParams();
+  const [hints] = useState(() => ({ company: params.get('company') ?? '', role: params.get('role') ?? '' }));
   const [text, setText] = useState('');
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(() => params.get('url') ?? '');
+  const [fetching, setFetching] = useState(false);
+  const [fetchedFrom, setFetchedFrom] = useState<string | null>(null);
   const [busy, setBusy] = useState<'reading' | 'saving' | null>(null);
   const [error, setError] = useState<unknown>(null);
   // Shown only when the posting doesn't say which company or role it is.
@@ -42,15 +47,33 @@ export default function JobNew() {
     setBusy('reading');
     try {
       const result = await api<JobAnalysisResult>('/api/jobs/analyze', { method: 'POST', body: { text } });
-      const { company, title } = result.analysis;
+      const company = result.analysis.company ?? hints.company;
+      const title = result.analysis.title ?? hints.role;
       if (company && title) await save(result, company, title);
       else {
-        setMissing({ result, company: company ?? '', title: title ?? '' });
+        setMissing({ result, company, title });
         setBusy(null);
       }
     } catch (e) {
       setError(e);
       setBusy(null);
+    }
+  }
+
+  /** Greenhouse, Lever and Ashby publish their postings' text; read it instead of copying. */
+  async function fetchFromLink() {
+    if (!cleanUrl) return;
+    setError(null);
+    setFetching(true);
+    try {
+      const job = await api<{ text: string; board: string }>('/api/jobs/fetch', { method: 'POST', body: { url: cleanUrl } });
+      setText(job.text);
+      setMissing(null);
+      setFetchedFrom(job.board === 'greenhouse' ? 'Greenhouse' : job.board === 'lever' ? 'Lever' : 'Ashby');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setFetching(false);
     }
   }
 
@@ -69,11 +92,30 @@ export default function JobNew() {
     <div className="max-w-3xl">
       <PageHeader
         title="New job"
-        description="Paste the job description. AutoReach reads it, shows how your profile fits, and writes an email for each person you add. Nothing is sent until you press Send."
+        description="Paste the job description, or a Greenhouse, Lever or Ashby link. AutoReach reads it, shows how your profile fits, and writes an email for each person you add. Nothing is sent until you press Send."
       />
 
       <div className="space-y-4">
-        <Field label="Job description" htmlFor="jd-text" hint={tooShort && text ? `Paste the full description (${text.trim().length} of at least ${MIN_CHARS} characters).` : 'Copy everything from the posting: title, company, responsibilities and requirements.'}>
+        <Field
+          label="Link to the posting (optional)"
+          htmlFor="jd-url"
+          hint="Greenhouse, Lever and Ashby links can fill in the description for you. Other links are just saved with the job."
+          error={url.trim() && !cleanUrl ? 'This isn’t a web link, so it won’t be saved.' : null}
+        >
+          <div className="flex gap-2">
+            <input id="jd-url" type="url" className="field" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" disabled={!!busy || fetching} />
+            <Button onClick={fetchFromLink} loading={fetching} disabled={!cleanUrl || !!busy}>
+              Get description
+            </Button>
+          </div>
+        </Field>
+        <Field label="Job description" htmlFor="jd-text" hint={
+            tooShort && text
+              ? `Paste the full description (${text.trim().length} of at least ${MIN_CHARS} characters).`
+              : fetchedFrom
+                ? `Read from the ${fetchedFrom} posting. Check it, then read it below.`
+                : 'Copy everything from the posting: title, company, responsibilities and requirements.'
+          }>
           <textarea
             id="jd-text"
             rows={14}
@@ -87,15 +129,6 @@ export default function JobNew() {
             disabled={!!busy}
           />
         </Field>
-        <Field
-          label="Link to the posting (optional)"
-          htmlFor="jd-url"
-          hint="Saved with the job so you can find it again. AutoReach doesn't open the link."
-          error={url.trim() && !cleanUrl ? 'This isn’t a web link, so it won’t be saved.' : null}
-        >
-          <input id="jd-url" type="url" className="field" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" disabled={!!busy} />
-        </Field>
-
         {missing && (
           <div className="panel space-y-3 p-4">
             <p className="text-sm">The posting doesn't say {!missing.company && !missing.title ? 'the company or the role' : !missing.company ? 'which company it is' : 'the role title'}. Add it so emails name it correctly.</p>

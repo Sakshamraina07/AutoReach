@@ -21,6 +21,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'));
 const GmailCallback = lazy(() => import('./pages/GmailCallback'));
 const JobNew = lazy(() => import('./pages/JobNew'));
 const JobPage = lazy(() => import('./pages/JobPage'));
+const CareerOps = lazy(() => import('./pages/CareerOps'));
 
 export function App() {
   const auth = useAuth();
@@ -52,6 +53,7 @@ export function App() {
           <Route path="opportunities/:id" element={<OpportunityPage />} />
           <Route path="jobs/new" element={<JobNew />} />
           <Route path="jobs/:id" element={<JobPage />} />
+          <Route path="career-ops" element={<CareerOps />} />
           <Route path="outreach" element={<Outreach />} />
           <Route path="outreach/new" element={<ComposerRoute />} />
           <Route path="outreach/:id" element={<MessagePage />} />

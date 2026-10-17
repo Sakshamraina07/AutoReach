@@ -31,6 +31,8 @@ export class FakeGoogle {
   historyId = 1000;
   historyRecords: { id: string; messagesAdded: { message: { id: string; threadId: string; labelIds?: string[] } }[] }[] = [];
   historyExpired = false;
+  /** Other hosts' answers by exact URL (job boards in the career-ops tests). */
+  external = new Map<string, { status: number; body: unknown }>();
   tokenResponses: Array<Record<string, unknown> | { error: string; status: number }> = [];
   requests: { method: string; url: string }[] = [];
   revoked: string[] = [];
@@ -129,6 +131,8 @@ export class FakeGoogle {
       }
       if (p === '/profile') return this.json(200, { emailAddress: this.accountEmail, historyId: String(this.historyId) });
     }
+    const external = this.external.get(url.toString());
+    if (external) return this.json(external.status, external.body);
     throw new Error(`FakeGoogle: unexpected request ${method} ${url}`);
   };
 }

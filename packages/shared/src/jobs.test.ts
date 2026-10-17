@@ -247,3 +247,16 @@ describe('skills the candidate has', () => {
   });
 });
 
+
+describe('priorities in the AI’s own words', () => {
+  it('keeps a fair paraphrase backed by a quote', () => {
+    const base = heuristicJobAnalysis(JD);
+    const a = sanitizeJobAnalysis(
+      { title: 'Software Engineer Intern - Backend', must_have: ['Node.js'], priorities: [{ point: 'Fast, well-tested database work', evidence: 'Write tests and help keep our PostgreSQL queries fast' }] },
+      JD,
+      base,
+      'm',
+    );
+    expect(a.priorities.map((p) => p.point)).toEqual(['Fast, well-tested database work']);
+  });
+});

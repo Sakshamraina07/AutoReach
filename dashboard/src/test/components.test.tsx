@@ -105,6 +105,7 @@ function me(over: Partial<MeResponse> = {}): MeResponse {
     gmail: gmail(),
     ai: { configured: false, provider: null, model: null },
     tracking: { configured: false, public_base_url: null },
+    career_ops: { configured: false },
     completeness: { percent: 50, items: [] },
     onboarding_completed: true,
     sent_today: 0,

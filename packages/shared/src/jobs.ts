@@ -480,13 +480,12 @@ export function sanitizeJobAnalysis(raw: Record<string, unknown> | null, jd: str
       const evidence = str(o.evidence, 400)?.replace(/^["'“]+|["'”]+$/g, '') ?? null;
       const evidenceOk = quoted(evidence) && (evidence!.split(/\s+/).length >= 6 || evidence!.length >= 30);
       const pointWords = point ? contentWords(point) : [];
-      // Paraphrase is fine ("merchants" for "merchant"), new facts are not: names, numbers and skills must be in the JD.
+      // Paraphrase is fine ("Fast, well-tested database work"), new facts are not: names, numbers and skills must be in the JD.
       const inJd = (w: string) => new RegExp(`(?<![a-z0-9])${esc(w.length > 5 ? w.slice(0, 5) : w)}`).test(jdNorm);
       const names = point ? point.split(/\s+/).slice(1).filter((w) => /^[A-Z]/.test(w)).map((w) => w.replace(/[^\w&.+#-]+$/, '')) : [];
       const pointOk =
         !!point &&
-        pointWords.length > 0 &&
-        pointWords.filter(inJd).length / pointWords.length >= 0.5 &&
+        pointWords.some(inJd) &&
         names.every((n) => hasPhrase(jdNorm, n)) &&
         (point.match(/\d+/g) ?? []).every((n) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(jd)) &&
         extractSkills(point).every((sk) => jdSkills.has(sk.toLowerCase()));

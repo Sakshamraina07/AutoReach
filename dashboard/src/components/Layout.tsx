@@ -1,6 +1,6 @@
 import type { GmailConnectionStatus } from '@autoreach/shared';
 import { clsx } from 'clsx';
-import { BarChart3, Bell, Briefcase, Inbox, LayoutGrid, LogOut, Menu, Moon, PauseCircle, PlayCircle, Plus, Send, Settings, Sun, Users } from 'lucide-react';
+import { BarChart3, Bell, Briefcase, Inbox, LayoutGrid, ListChecks, LogOut, Menu, Moon, PauseCircle, PlayCircle, Plus, Send, Settings, Sun, Users } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -90,7 +90,7 @@ export function Layout() {
       <Button variant="primary" className="mb-3 w-full" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/jobs/new')}>
         New job
       </Button>
-      {NAV.map((n) => (
+      {[...NAV.slice(0, 3), ...(me.data?.career_ops.configured ? [{ to: '/career-ops', label: 'From career-ops', icon: <ListChecks className="h-4 w-4" /> }] : []), ...NAV.slice(3)].map((n: (typeof NAV)[number]) => (
         <NavLink
           key={n.to}
           to={n.to}

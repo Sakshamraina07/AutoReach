@@ -115,6 +115,8 @@ export interface MeResponse {
   gmail: GmailConnectionStatus;
   ai: { configured: boolean; provider: string | null; model: string | null };
   tracking: { configured: boolean; public_base_url: string | null };
+  /** A career-ops folder on the server's computer that this user may read. */
+  career_ops: { configured: boolean };
   completeness: { percent: number; items: { key: string; label: string; done: boolean }[] };
   onboarding_completed: boolean;
   sent_today: number;
@@ -187,6 +189,9 @@ export interface Opportunity {
   company_notes: string | null;
   /** The job-description analysis the candidate confirmed (null for opportunities saved without one). */
   analysis: JobAnalysis | null;
+  /** Set for jobs imported from career-ops: its report number and 0–5 score. */
+  career_ops_report: number | null;
+  career_ops_score: number | null;
   recruiter_count: number;
   messages_sent: number;
   replies: number;
@@ -386,4 +391,35 @@ export interface PreparedEmail {
   /** Set when a new version was written just now. */
   draft: DraftResult | null;
   quality: QualityFinding[];
+}
+
+/* ---------------- career-ops (local folder) ---------------- */
+
+/** Where a career-ops job's description would come from when it is imported. */
+export type CareerOpsDescriptionSource = 'report' | 'saved' | 'link' | 'none';
+
+export interface CareerOpsJob {
+  /** The report number career-ops gave the evaluation (reports/{###}-…). */
+  report_number: number;
+  report_file: string;
+  company: string | null;
+  role: string | null;
+  /** career-ops' global score, 0–5. */
+  score: number | null;
+  legitimacy: string | null;
+  date: string | null;
+  url: string | null;
+  /** The application's status in career-ops' tracker, when it has a row. */
+  status: string | null;
+  description: CareerOpsDescriptionSource;
+  /** Set when the job is already in AutoReach. */
+  opportunity_id: string | null;
+}
+
+export interface CareerOpsOverview {
+  jobs: CareerOpsJob[];
+  /** Reports that couldn't be read (named, so nothing disappears silently). */
+  unreadable: string[];
+  /** Whether career-ops already has a cv.md. */
+  cv_exists: boolean;
 }

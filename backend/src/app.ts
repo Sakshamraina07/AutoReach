@@ -7,6 +7,7 @@ import { pinoHttp } from 'pino-http';
 import type { Deps } from './context.js';
 import { ensureUserRows, errorHandler, requireAuth } from './http/support.js';
 import { coreRoutes } from './http/routes/core.js';
+import { careerOpsRoutes } from './http/routes/careerOps.js';
 import { crmRoutes } from './http/routes/crm.js';
 import { jobRoutes } from './http/routes/jobs.js';
 import { outreachRoutes } from './http/routes/outreach.js';
@@ -96,6 +97,7 @@ export function createApp(deps: Deps): Express {
   api.use(coreRoutes(deps, limiters));
   api.use(crmRoutes(deps));
   api.use(jobRoutes(deps, limiters));
+  api.use(careerOpsRoutes(deps, limiters));
   api.use(outreachRoutes(deps, limiters));
   app.use('/api', api);
 

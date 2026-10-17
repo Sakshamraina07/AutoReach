@@ -2,6 +2,8 @@ import { Router, type RequestHandler } from 'express';
 import { jobAnalyzeSchema, jobRecruitersPasteSchema, jobSaveSchema } from '@autoreach/shared';
 import type { Deps } from '../../context.js';
 import { z } from 'zod';
+import { unprocessable } from '../../errors.js';
+import { fetchJobFromBoard, jobBoardTarget } from '../../services/jobFetch.js';
 import { addRecruitersToJob, analyzeJob, getJob, prepareJobEmail, saveJob, suggestedRecruiters } from '../../services/jobs.js';
 import { idParam, parse, userId } from '../support.js';
 
@@ -13,6 +15,17 @@ export function jobRoutes(deps: Deps, limiters: { ai: RequestHandler }): Router 
     const uid = userId(req);
     const body = parse(jobAnalyzeSchema, req.body);
     res.json(await analyzeJob(deps, uid, body));
+  });
+  /** The text of a Greenhouse, Lever or Ashby posting, from the board's public API. */
+  r.post('/jobs/fetch', limiters.ai, async (req, res) => {
+    userId(req);
+    const { url } = parse(z.object({ url: z.string().trim().min(1).max(2048) }), req.body ?? {});
+    if (!jobBoardTarget(url)) {
+      throw unprocessable('JOB_LINK_UNSUPPORTED', 'AutoReach can read links from Greenhouse, Lever and Ashby job boards. For other sites, paste the description.');
+    }
+    const job = await fetchJobFromBoard(deps.fetch, url);
+    if (!job) throw unprocessable('JOB_NOT_FOUND', "The job board didn't return this posting. It may have closed; paste the description if you still have it.");
+    res.json(job);
   });
   r.post('/jobs', async (req, res) => {
     const uid = userId(req);
