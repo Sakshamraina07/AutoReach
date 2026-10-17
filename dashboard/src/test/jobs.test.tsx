@@ -40,6 +40,7 @@ const me: MeResponse = {
   ai: { configured: true, provider: 'gemini', model: 'gemini-3.8-flash' },
   tracking: { configured: false, public_base_url: null },
     career_ops: { configured: false },
+    hunter: { configured: false },
   completeness: { percent: 100, items: [] },
   onboarding_completed: true,
   sent_today: 0,

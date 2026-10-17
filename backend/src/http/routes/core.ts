@@ -52,6 +52,7 @@ export function coreRoutes(deps: Deps, limiters: { ai: RequestHandler }): Router
         gmail,
         ai: { configured: !!deps.ai, provider: deps.ai?.name ?? null, model: deps.ai?.model ?? null },
         tracking: { configured: deps.config.tracking.configured, public_base_url: deps.config.tracking.configured ? deps.config.apiPublicUrl : null },
+        hunter: { configured: !!deps.config.hunterApiKey },
         career_ops: { configured: careerOpsAllowed(deps.config, { email: req.user?.email, remoteAddress: req.socket.remoteAddress }) },
         completeness: { percent: completeness.percent, items: completeness.items.map(({ key, label, done }) => ({ key, label, done })) },
         onboarding_completed: !!profile?.onboarding_completed_at,

@@ -25,6 +25,10 @@ reminded when to follow up.
   find and score jobs, AutoReach lists its scored jobs and turns any of them into a job page
   with one click ([setup on Windows](docs/CAREER_OPS.md)). Greenhouse, Lever and Ashby links
   can also fill in a job description for you.
+* **Find people with Hunter.io** (optional, your own free Hunter key): on a job page, list the
+  recruiters or engineering leads Hunter found at that company, with Hunter's confidence and
+  where it saw each address, and add the ones you pick. They're saved as unconfirmed, so the
+  first email to each asks you to check the address.
 * **Job tracker**: saved postings with skills, deadline and a status pipeline from
   "saved" to "offer".
 * **Role-specific drafts**: from your verified profile, projects and the job posting, with AI

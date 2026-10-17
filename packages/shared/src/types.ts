@@ -115,6 +115,8 @@ export interface MeResponse {
   gmail: GmailConnectionStatus;
   ai: { configured: boolean; provider: string | null; model: string | null };
   tracking: { configured: boolean; public_base_url: string | null };
+  /** Hunter.io (HUNTER_API_KEY) for finding people at a company. */
+  hunter: { configured: boolean };
   /** A career-ops folder on the server's computer that this user may read. */
   career_ops: { configured: boolean };
   completeness: { percent: number; items: { key: string; label: string; done: boolean }[] };
@@ -422,4 +424,40 @@ export interface CareerOpsOverview {
   unreadable: string[];
   /** Whether career-ops already has a cv.md. */
   cv_exists: boolean;
+}
+
+/* ---------------- Finding people (Hunter.io) ---------------- */
+
+export type PeopleGroup = 'recruiters' | 'engineering' | 'everyone';
+
+export const PEOPLE_GROUP_LABELS: Record<PeopleGroup, string> = {
+  recruiters: 'Recruiters and HR',
+  engineering: 'Engineering leads and managers',
+  everyone: 'Everyone Hunter found',
+};
+
+export interface FoundPerson {
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  position: string | null;
+  department: string | null;
+  seniority: string | null;
+  /** Hunter's 0–100 confidence that this is the person's address. */
+  confidence: number | null;
+  /** Hunter's own deliverability check, if it ran one: valid, accept_all, unknown, … */
+  hunter_status: string | null;
+  linkedin: string | null;
+  /** A public page where Hunter saw the address. */
+  source_url: string | null;
+  sources: number;
+  /** Set when this address is already one of your recruiters. */
+  recruiter_id?: string | null;
+}
+
+export interface PeopleSearch {
+  people: FoundPerson[];
+  /** The domain Hunter searched (it resolves a company name to one). */
+  domain: string | null;
+  limit: number;
 }

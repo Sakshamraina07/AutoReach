@@ -63,6 +63,10 @@ Supabase, Railway or Gmail accounts.
   AutoReach can also write career-ops' `cv.md` from the profile (never replacing one).
   Read-only otherwise; served only to this computer outside production, and
   `CAREER_OPS_OWNER_EMAIL` limits it to one account.
+* **Find people with Hunter.io** (`HUNTER_API_KEY`): on a job page, Hunter's Domain Search
+  for recruiters/HR, engineering leads or everyone at the company (1 credit per address
+  found, up to 10 per search; nothing saved until you pick). Picked people are saved as
+  `unverified_guess` with a `hunter` tag; Hunter's own check is shown as Hunter's.
 * **Job links**: on New job, a Greenhouse, Lever or Ashby link fills in the description.
 * **Onboarding in three steps**: résumé (read into your profile), check your details, connect
   Gmail. The time zone comes from the browser; limits and tracking keep their defaults.

@@ -15,6 +15,7 @@ import { clsx } from 'clsx';
 import { ArrowLeft, Check, Circle, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { FindPeople } from '../components/FindPeople';
 import { JobEmailCard } from '../components/JobEmailCard';
 import { Button, Dialog, EmptyState, ErrorState, Field, Spinner, useToast } from '../components/ui';
 import { api } from '../lib/api';
@@ -123,7 +124,7 @@ function JobPage({ id }: { id: string }) {
               </h2>
               {view.recruiters.length > 0 && <span className="num text-sm text-muted">{plural(view.recruiters.length, 'person', 'people')}</span>}
             </div>
-            <AddPeople jobId={id} company={o.company} empty={view.recruiters.length === 0} />
+            <AddPeople jobId={id} company={o.company} empty={view.recruiters.length === 0} hunter={!!me.data?.hunter.configured} />
             {view.recruiters.map((r) => (
               <JobEmailCard
                 key={r.id}
@@ -266,7 +267,7 @@ export function JobReading({ analysis: a, fit, aiModel }: { analysis: JobAnalysi
 /* Adding people                                                       */
 /* ------------------------------------------------------------------ */
 
-function AddPeople({ jobId, company, empty }: { jobId: string; company: string; empty: boolean }) {
+function AddPeople({ jobId, company, empty, hunter }: { jobId: string; company: string; empty: boolean; hunter: boolean }) {
   const qc = useQueryClient();
   const suggested = useSuggestedRecruiters(jobId);
   const [text, setText] = useState('');
@@ -335,6 +336,7 @@ function AddPeople({ jobId, company, empty }: { jobId: string; company: string; 
           </ul>
         </div>
       )}
+      {hunter && <FindPeople jobId={jobId} company={company} />}
       {error ? <ErrorState error={error} /> : null}
     </div>
   );

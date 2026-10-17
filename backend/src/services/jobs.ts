@@ -329,3 +329,47 @@ export async function suggestedRecruiters(tx: Tx, userId: string, opportunityId:
   );
   return summaries(tx, userId, ids.map((r) => r.id));
 }
+
+/**
+ * Add people found by a third-party search (Hunter.io) to the job. Unlike pasted contacts,
+ * their addresses were not given to the user, so they are saved as unverified guesses:
+ * the first email to each asks the user to confirm the address.
+ */
+export async function addFoundPeopleToJob(
+  deps: Deps,
+  tx: Tx,
+  userId: string,
+  opportunityId: string,
+  people: { email: string; first_name: string | null; last_name: string | null; position: string | null; linkedin: string | null; source_url: string | null }[],
+): Promise<JobPasteResult> {
+  const opp = await getOpportunity(tx, userId, opportunityId);
+  if (!opp) throw notFound('Job');
+  let added = 0;
+  let alreadySaved = 0;
+  for (const p of people.slice(0, 50)) {
+    const existing = await findActiveByEmail(tx, userId, p.email);
+    if (existing) {
+      alreadySaved++;
+      await linkRecruiterToOpportunity(tx, userId, existing.id, opportunityId);
+      continue;
+    }
+    const name = [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || null;
+    await createRecruiter(tx, userId, {
+      email: p.email,
+      full_name: name,
+      title: p.position,
+      company: opp.company,
+      target_role: opp.title,
+      linkedin_url: p.linkedin && /^https?:\/\//i.test(p.linkedin) ? p.linkedin : p.linkedin ? `https://${p.linkedin.replace(/^\/+/, '')}` : null,
+      company_website: null,
+      source_url: p.source_url,
+      source: 'other',
+      email_verification: 'unverified_guess',
+      tags: ['hunter'],
+      opportunity_id: opportunityId,
+    });
+    added++;
+  }
+  const view = await getJob(deps, tx, userId, opportunityId);
+  return { ...view, added, already_saved: alreadySaved, skipped: [] };
+}
