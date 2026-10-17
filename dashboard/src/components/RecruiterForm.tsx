@@ -93,7 +93,7 @@ export function RecruiterFields({ value, onChange, showOpportunity = true }: { v
         </select>
       </Field>
       {showOpportunity && (
-        <Field label="Link to an opportunity" htmlFor="r-opp" className="sm:col-span-2">
+        <Field label="Link to a job" htmlFor="r-opp" className="sm:col-span-2">
           <select id="r-opp" className="field" value={value.opportunity_id} onChange={(e) => set('opportunity_id', e.target.value)}>
             <option value="">None</option>
             {opps.data?.items.map((o) => (

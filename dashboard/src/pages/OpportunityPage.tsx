@@ -205,10 +205,10 @@ export default function OpportunityPage() {
       {linking && <LinkRecruitersDialog opportunityId={o.id} linked={o.recruiters.map((r) => r.id)} onClose={() => setLinking(false)} />}
       {deleting && (
         <Confirm
-          title="Delete opportunity?"
+          title="Delete job?"
           danger
-          confirmLabel="Delete opportunity"
-          body={<p>The opportunity and its recruiter links are removed. Recruiters and sent emails stay.</p>}
+          confirmLabel="Delete job"
+          body={<p>The job and its recruiter links are removed. Recruiters and sent emails stay.</p>}
           onClose={() => setDeleting(false)}
           onConfirm={async () => {
             await api(`/api/opportunities/${id}`, { method: 'DELETE' });

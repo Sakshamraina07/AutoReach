@@ -143,7 +143,7 @@ export function OpportunityDialog({ onClose, existing, onSaved }: { onClose: () 
   const toast = useToast();
   return (
     <Dialog
-      title={existing ? 'Edit opportunity' : 'Save an opportunity'}
+      title={existing ? 'Edit job' : 'Save a job'}
       onClose={onClose}
       width="max-w-2xl"
       footer={
@@ -152,7 +152,7 @@ export function OpportunityDialog({ onClose, existing, onSaved }: { onClose: () 
             Cancel
           </Button>
           <Button variant="primary" type="submit" form="opp-form" loading={busy}>
-            {existing ? 'Save changes' : 'Save opportunity'}
+            {existing ? 'Save changes' : 'Save job'}
           </Button>
         </>
       }
@@ -168,7 +168,7 @@ export function OpportunityDialog({ onClose, existing, onSaved }: { onClose: () 
               ? await api<Opportunity>(`/api/opportunities/${existing.id}`, { method: 'PATCH', body: opportunityPayload(value) })
               : await api<Opportunity>('/api/opportunities', { method: 'POST', body: opportunityPayload(value) });
             await invalidate();
-            toast.success(existing ? 'Opportunity updated' : 'Opportunity saved');
+            toast.success(existing ? 'Job updated' : 'Job saved');
             onSaved?.(o);
             onClose();
           } catch (err) {

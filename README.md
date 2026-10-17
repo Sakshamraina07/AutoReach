@@ -73,6 +73,11 @@ VITE_DEV_LOGIN=true npm run dev:dashboard # http://localhost:5173
 
 Full instructions: [docs/SETUP.md](docs/SETUP.md).
 
+**Windows, after setup:** double-click `start-autoreach.cmd` in the repository folder. It opens
+two windows, "AutoReach API" and "AutoReach dashboard", waits a few seconds and opens
+http://localhost:5173 in your browser. Keep both windows open while you use AutoReach:
+sending, reply checks and follow-ups only run while the API window is open.
+
 ## Documentation
 
 | Topic | Document |

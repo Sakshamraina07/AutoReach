@@ -419,9 +419,9 @@ function RecruiterDetailView({ r, onStatus, onDelete }: { r: RecruiterDetail; on
       {r.notes && <p className="whitespace-pre-wrap rounded border border-line bg-bg p-3 text-sm text-muted">{r.notes}</p>}
 
       <section>
-        <h3 className="mb-2 text-sm">Opportunities</h3>
+        <h3 className="mb-2 text-sm">Jobs</h3>
         {r.opportunities.length === 0 ? (
-          <p className="text-sm text-muted">Not linked to any saved opportunity.</p>
+          <p className="text-sm text-muted">Not linked to any saved job.</p>
         ) : (
           <ul className="space-y-1 text-sm">
             {r.opportunities.map((o) => (
@@ -629,7 +629,7 @@ function DuplicatesDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog title="Possible duplicates" onClose={onClose} width="max-w-2xl">
       <p className="mb-3 text-sm text-muted">
-        Merging keeps the record you choose and moves every email, follow-up, tag and opportunity link from the other one into it. Nothing is deleted.
+        Merging keeps the record you choose and moves every email, follow-up, tag and job link from the other one into it. Nothing is deleted.
       </p>
       {!dups.data ? (
         <Spinner />

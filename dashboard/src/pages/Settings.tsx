@@ -217,7 +217,7 @@ function ProfileSection() {
           </Button>
         }
       >
-        <p className="mb-5 text-xs text-muted">Drafts use only what's written here and in your opportunities. If something isn't in your profile, AutoReach won't claim it.</p>
+        <p className="mb-5 text-xs text-muted">Drafts use only what's written here and in your jobs. If something isn't in your profile, AutoReach won't claim it.</p>
         <ProfileEditor value={form} onChange={setForm} />
         <SaveBar dirty={edited !== null} saving={saving} onSave={save} onReset={() => setForm(null)} error={error} />
       </Panel>
@@ -904,7 +904,7 @@ function PrivacySection() {
   return (
     <>
       <Panel title="Export your data">
-        <p className="mb-3 text-sm text-muted">Download everything AutoReach stores about you as JSON: profile, recruiters, opportunities, emails, follow-ups, open signals and activity. Résumé files are downloaded separately from the Résumés section. Gmail tokens are never exported.</p>
+        <p className="mb-3 text-sm text-muted">Download everything AutoReach stores about you as JSON: profile, recruiters, jobs, emails, follow-ups, open signals and activity. Résumé files are downloaded separately from the Résumés section. Gmail tokens are never exported.</p>
         <div className="flex flex-wrap gap-2">
           <Button
             icon={<Download className="h-4 w-4" />}
