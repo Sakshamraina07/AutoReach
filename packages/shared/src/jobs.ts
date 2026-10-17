@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { isValidEmail, normalizeEmail } from './email.js';
 import { EMPLOYMENT_TYPES, type EmploymentType } from './enums.js';
 import { extractExperienceRequirement } from './roles.js';
-import { canonicalSkill, canonicalSkillSet, extractSkills } from './skills.js';
+import { canonicalSkill, canonicalSkillSet, extractSkills, SKILL_LEXICON } from './skills.js';
 
 export const SENIORITY_LEVELS = ['intern', 'entry', 'mid', 'senior', 'unknown'] as const;
 export type Seniority = (typeof SENIORITY_LEVELS)[number];
@@ -243,12 +243,33 @@ function guessDeadline(text: string): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-/** "JavaScript / TypeScript" or "Java or Kotlin": the job accepts either. */
+/** Names written with a slash that are one thing, not a choice. */
+const SLASH_COMPOUND = /\b(?:ci\/cd|pl\/sql|tcp\/ip|ui\/ux|a\/b|i\/o|b2b\/b2c)\b/gi;
+
+/**
+ * "JavaScript / TypeScript" (as AutoReach writes it) or "Java or Kotlin": the job accepts
+ * either. "CI/CD", "PL/SQL" and similar stay one skill.
+ */
 export function skillAlternatives(entry: string): string[] {
-  return entry
+  const kept: string[] = [];
+  const masked = entry.replace(SLASH_COMPOUND, (m) => `\uE000${kept.push(m) - 1}\uE000`);
+  return masked
     .split(/\s*(?:\/|\bor\b)\s*/i)
-    .map((p) => p.trim())
+    .map((p) => p.replace(/\uE000(\d+)\uE000/g, (_, i: string) => kept[Number(i)] ?? '').trim())
     .filter(Boolean);
+}
+
+const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The text offers `a` and `b` as a choice ("Java or Kotlin", "Java and/or Kotlin"). A plain "HTML/CSS" means both. */
+function offeredAsChoice(text: string, a: string, b: string): boolean {
+  const names = (skill: string) => {
+    const entry = SKILL_LEXICON.find((e) => e.name.toLowerCase() === canonicalSkill(skill).toLowerCase());
+    return [skill, ...(entry ? [entry.name, ...entry.aliases] : [])].map(esc).join('|');
+  };
+  const or = '\\s*,?\\s*(?:\\bor\\b|\\band\\s*/\\s*or\\b)\\s*';
+  const side = (skill: string) => `(?<![\\w.])(?:${names(skill)})(?![\\w])`;
+  return new RegExp(`${side(a)}${or}${side(b)}|${side(b)}${or}${side(a)}`, 'i').test(text);
 }
 
 /** Knowing the left side means knowing the right side well enough to say so. */
@@ -275,14 +296,14 @@ function withImplied(skills: Set<string>): Set<string> {
 function groupAlternatives(lineList: string[], skills: string[]): string[] {
   const out: string[] = [];
   const used = new Set<string>();
-  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const line of lineList) {
-    if (!/\bor\b|\//i.test(line)) continue;
+    if (!/\bor\b/i.test(line)) continue;
     const inLine = extractSkills(line).filter((sk) => skills.includes(sk));
     if (inLine.length < 2) continue;
     const alt = inLine.map(esc).join('|');
-    // Only the skills directly either side of "or" / "/" ("JavaScript or TypeScript and Node.js" → JS / TS).
-    const re = new RegExp(`(?<![\\w.])(${alt})(?![\\w])\\s*(?:,\\s*)?(?:\\bor\\b|/)\\s*(${alt})(?![\\w])`, 'gi');
+    // Only the skills directly either side of "or" ("JavaScript or TypeScript and Node.js" → JS / TS).
+    // A slash alone ("HTML/CSS") means both are wanted.
+    const re = new RegExp(`(?<![\\w.])(${alt})(?![\\w])\\s*(?:,\\s*)?(?:\\bor\\b|\\band\\s*/\\s*or\\b)\\s*(${alt})(?![\\w])`, 'gi');
     for (const m of line.matchAll(re)) {
       const a = inLine.find((sk) => sk.toLowerCase() === m[1]!.toLowerCase());
       const b = inLine.find((sk) => sk.toLowerCase() === m[2]!.toLowerCase());
@@ -347,46 +368,60 @@ function strList(v: unknown, maxItems: number, maxLen: number): string[] {
   return Array.isArray(v) ? v.map((x) => str(x, maxLen)).filter((x): x is string => !!x).slice(0, maxItems) : [];
 }
 
-/** True when the value's main words occur in the JD (tolerates "Contoso" vs "Contoso Ltd."). */
-function occursIn(jdNorm: string, value: string): boolean {
-  const v = norm(value);
-  if (jdNorm.includes(v)) return true;
-  const ws = v.match(/[a-z0-9&+#.]{3,}/g) ?? [];
-  return ws.length > 0 && ws.filter((w) => jdNorm.includes(w)).length >= Math.ceil(ws.length * 0.6);
-}
-
-/** The phrase occurs in the JD as whole words ("Go" doesn't count inside "good"). */
+/** The phrase occurs in the JD as whole words ("Go" doesn't count inside "good", "Meta" not inside "metadata"). */
 function hasPhrase(jdNorm: string, phrase: string): boolean {
   const p = norm(phrase);
   if (!p) return false;
-  const re = new RegExp(`(?<![a-z0-9])${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z0-9])`);
-  return re.test(jdNorm);
+  return new RegExp(`(?<![a-z0-9])${esc(p)}(?![a-z0-9])`).test(jdNorm);
 }
 
-/** Keep only skills the JD itself mentions (by our skill list, or literally as whole words). */
-function verifiedJobSkills(raw: string[], jdNorm: string, jdSkills: Set<string>): string[] {
+/** True when the value, or most of its words, occur in the JD as whole words (tolerates "Contoso" vs "Contoso Ltd."). */
+function occursIn(jdNorm: string, value: string): boolean {
+  if (hasPhrase(jdNorm, value)) return true;
+  const ws = norm(value).match(/[a-z0-9&+#.]{3,}/g) ?? [];
+  return ws.length > 0 && ws.filter((w) => hasPhrase(jdNorm, w)).length >= Math.ceil(ws.length * 0.6);
+}
+
+const STOP = new Set(['the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'their', 'they', 'what', 'about', 'your', 'you', 'our', 'are', 'who', 'will', 'can', 'more', 'most', 'team', 'teams', 'work']);
+const contentWords = (s: string) => (norm(s).match(/[a-z0-9+#.]{3,}/g) ?? []).filter((w) => !STOP.has(w));
+
+const LEXICON_NAMES = new Set(SKILL_LEXICON.map((e) => e.name.toLowerCase()));
+
+/**
+ * Keep only skills the JD itself asks for. Skills AutoReach knows ("Go", "Express", "Swift")
+ * must be found by its own careful matcher, so "ready to go" isn't Go; other names must
+ * appear in the JD as whole words. "A / B" stays a choice only if the JD says "A or B".
+ */
+function verifiedJobSkills(raw: string[], jd: string, jdNorm: string, jdSkills: Set<string>): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
+  const ok = (p: string) => {
+    const key = canonicalSkill(p).toLowerCase();
+    return LEXICON_NAMES.has(key) ? jdSkills.has(key) : hasPhrase(jdNorm, p);
+  };
+  const push = (entry: string) => {
+    const k = entry.toLowerCase();
+    if (entry.length > 60 || seen.has(k)) return;
+    seen.add(k);
+    out.push(entry);
+  };
   for (const s of raw) {
-    const parts = skillAlternatives(s);
-    if (parts.length > 1) {
-      const ok = parts.filter((p) => jdSkills.has(canonicalSkill(p).toLowerCase()) || hasPhrase(jdNorm, p)).map(canonicalSkill);
-      const entry = ok.join(' / ');
-      if (ok.length && !seen.has(entry.toLowerCase())) {
-        seen.add(entry.toLowerCase());
-        out.push(entry);
-      }
-      continue;
-    }
-    const c = canonicalSkill(s);
-    const key = c.toLowerCase();
-    if (seen.has(key)) continue;
-    if (jdSkills.has(key) || hasPhrase(jdNorm, s)) {
-      seen.add(key);
-      out.push(c);
-    }
+    const parts = skillAlternatives(s).filter(ok).map(canonicalSkill);
+    if (parts.length === 2 && offeredAsChoice(jd, parts[0]!, parts[1]!)) push(`${parts[0]} / ${parts[1]}`);
+    else for (const part of parts) push(part);
   }
   return out;
+}
+
+/** A YYYY-MM-DD date the JD actually writes (as ISO, or with its day, month and year). */
+function dateWrittenIn(jd: string, iso: string): boolean {
+  if (!jobAnalysisSchema.shape.deadline.safeParse(iso).success) return false;
+  if (jd.includes(iso)) return true;
+  const [y, m, d] = iso.split('-').map(Number) as [number, number, number];
+  const month = new Date(Date.UTC(2000, m - 1, 1)).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+  const monthRe = `(?:${month}|${month.slice(0, 3)})\\.?`;
+  const day = `0?${d}(?:st|nd|rd|th)?`;
+  return new RegExp(`\\b${day}\\s+${monthRe},?\\s+${y}\\b|\\b${monthRe}\\s+${day},?\\s+${y}\\b|\\b0?${d}[/.-]0?${m}[/.-]${y}\\b`, 'i').test(jd);
 }
 
 /**
@@ -398,6 +433,7 @@ export function sanitizeJobAnalysis(raw: Record<string, unknown> | null, jd: str
   const jdNorm = norm(jd);
   const jdSkills = canonicalSkillSet(extractSkills(jd));
   let dropped = 0;
+  const quoted = (v: string | null) => !!v && jdNorm.includes(norm(v));
 
   const company = str(raw.company, 160);
   const title = str(raw.title, 200);
@@ -407,66 +443,96 @@ export function sanitizeJobAnalysis(raw: Record<string, unknown> | null, jd: str
 
   const exp = (raw.experience && typeof raw.experience === 'object' ? raw.experience : {}) as Record<string, unknown>;
   let minYears = typeof exp.min_years === 'number' && Number.isInteger(exp.min_years) && exp.min_years >= 0 && exp.min_years <= 40 ? exp.min_years : null;
-  // A number of years must be written in the JD next to "year(s)".
-  if (minYears !== null && minYears > 0 && !new RegExp(`\\b${minYears}\\s*(?:\\+|-|–|to)?\\s*(?:\\d{1,2}\\s*)?\\+?\\s*(?:years?|yrs?)\\b`, 'i').test(jd)) {
+  // The minimum must be written in the JD next to "year(s)", and not as the top of a range ("1-3 years" is 1).
+  if (minYears !== null && minYears > 0 && !new RegExp(`(?<![\\d.])(?<!\\d\\s*(?:-|–|to)\\s*)${minYears}\\s*(?:\\+|(?:-|–|to)\\s*\\d{1,2})?\\s*\\+?\\s*(?:years?|yrs?)\\b`, 'i').test(jd)) {
     minYears = base.experience.min_years;
     dropped++;
   }
-  const expText = str(exp.text, 300);
+  const expTextRaw = str(exp.text, 300);
+  // The experience line feeds the email, so it must be the JD's own words.
+  const expText = quoted(expTextRaw) ? expTextRaw : null;
+  if (expTextRaw && !expText) dropped++;
   const fresher = typeof exp.fresher_friendly === 'boolean' ? exp.fresher_friendly : null;
 
-  const mustRaw = strList(raw.must_have, 25, 60);
-  const niceRaw = strList(raw.nice_to_have, 25, 60);
-  const must = verifiedJobSkills(mustRaw, jdNorm, jdSkills);
-  const mustKeys = new Set(must.map((s) => s.toLowerCase()));
-  const nice = verifiedJobSkills(niceRaw, jdNorm, jdSkills).filter((s) => !mustKeys.has(s.toLowerCase()));
-  dropped += mustRaw.length + niceRaw.length - must.length - nice.length;
+  const mustRaw = strList(raw.must_have, 25, 80);
+  const niceRaw = strList(raw.nice_to_have, 25, 80);
+  const must = verifiedJobSkills(mustRaw, jd, jdNorm, jdSkills).slice(0, 25);
+  const mustKeys = new Set(must.flatMap(skillAlternatives).map((s) => s.toLowerCase()));
+  const nice = verifiedJobSkills(niceRaw, jd, jdNorm, jdSkills)
+    .filter((s) => !skillAlternatives(s).some((p) => mustKeys.has(p.toLowerCase())))
+    .slice(0, 25);
+  dropped += Math.max(0, mustRaw.length + niceRaw.length - must.length - nice.length);
 
-  const responsibilities = strList(raw.responsibilities, 8, 200).filter((r) => {
+  const responsibilities = strList(raw.responsibilities, 8, 220).filter((r) => {
     const ws = words(r);
-    const ok = ws.length > 0 && ws.filter((w) => jdNorm.includes(w)).length / ws.length >= 0.5;
+    const ok = ws.length > 0 && ws.filter((w) => hasPhrase(jdNorm, w)).length / ws.length >= 0.5;
     if (!ok) dropped++;
     return ok;
   });
 
+  // Each priority opens an email, so it must be backed by a real quote, and the point
+  // itself may only use the JD's words, numbers and skills.
   const priorities: JobPriority[] = [];
   if (Array.isArray(raw.priorities)) {
     for (const p of raw.priorities.slice(0, 5)) {
       const o = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
       const point = str(o.point, 200);
-      const evidence = str(o.evidence, 400)?.replace(/^["'“]+|["'”]+$/g, '');
-      if (point && evidence && jdNorm.includes(norm(evidence))) priorities.push({ point, evidence });
+      const evidence = str(o.evidence, 400)?.replace(/^["'“]+|["'”]+$/g, '') ?? null;
+      const evidenceOk = quoted(evidence) && (evidence!.split(/\s+/).length >= 6 || evidence!.length >= 30);
+      const pointWords = point ? contentWords(point) : [];
+      // Paraphrase is fine ("merchants" for "merchant"), new facts are not: names, numbers and skills must be in the JD.
+      const inJd = (w: string) => new RegExp(`(?<![a-z0-9])${esc(w.length > 5 ? w.slice(0, 5) : w)}`).test(jdNorm);
+      const names = point ? point.split(/\s+/).slice(1).filter((w) => /^[A-Z]/.test(w)).map((w) => w.replace(/[^\w&.+#-]+$/, '')) : [];
+      const pointOk =
+        !!point &&
+        pointWords.length > 0 &&
+        pointWords.filter(inJd).length / pointWords.length >= 0.5 &&
+        names.every((n) => hasPhrase(jdNorm, n)) &&
+        (point.match(/\d+/g) ?? []).every((n) => new RegExp(`(?<!\\d)${n}(?!\\d)`).test(jd)) &&
+        extractSkills(point).every((sk) => jdSkills.has(sk.toLowerCase()));
+      if (point && evidence && evidenceOk && pointOk) priorities.push({ point, evidence });
       else dropped++;
       if (priorities.length === 3) break;
     }
   }
 
   const deadlineRaw = str(raw.deadline, 10);
-  const deadline = deadlineRaw && /^\d{4}-\d{2}-\d{2}$/.test(deadlineRaw) && !Number.isNaN(Date.parse(deadlineRaw)) ? deadlineRaw : base.deadline;
+  let deadline = base.deadline;
+  if (deadlineRaw && deadlineRaw !== base.deadline) {
+    if (!base.deadline && dateWrittenIn(jd, deadlineRaw)) deadline = deadlineRaw;
+    else dropped++;
+  }
 
   const notes = [...base.notes];
   if (dropped > 0) notes.push(`${dropped} detail${dropped === 1 ? '' : 's'} from the AI didn't match the job description and ${dropped === 1 ? 'was' : 'were'} left out.`);
 
-  return {
-    company: company && occursIn(jdNorm, company) ? company : (base.company ?? company),
-    title: title && occursIn(jdNorm, title) ? title : (base.title ?? title),
+  // Company and role must appear in the JD. When they don't and the plain reading found
+  // nothing either, leave them empty so the page asks instead of guessing.
+  const merged: JobAnalysis = {
+    company: company && occursIn(jdNorm, company) ? company : base.company,
+    title: title && occursIn(jdNorm, title) ? title : base.title,
     location: location && occursIn(jdNorm, location) ? location : base.location,
     employment_type: et ?? base.employment_type,
     seniority: sen ?? base.seniority,
     experience: {
       min_years: minYears,
-      text: expText && occursIn(jdNorm, expText) ? expText : base.experience.text,
+      text: expText ?? base.experience.text,
       fresher_friendly: fresher ?? base.experience.fresher_friendly,
     },
     must_have: must.length ? must : base.must_have,
     nice_to_have: must.length || nice.length ? nice : base.nice_to_have,
-    responsibilities: responsibilities.length ? responsibilities.slice(0, 5) : base.responsibilities,
+    responsibilities: (responsibilities.length ? responsibilities.slice(0, 5) : base.responsibilities).map((r) => r.slice(0, 220)),
     priorities,
     deadline,
     source: 'ai',
-    model,
-    notes,
+    model: model ? model.slice(0, 120) : null,
+    notes: notes.slice(0, 6),
   };
+  // Whatever comes out must be saveable as-is; otherwise use the plain reading.
+  if (!jobAnalysisSchema.safeParse(merged).success) {
+    return { ...base, notes: [...base.notes, 'The AI reply could not be used, so this is a plain keyword reading of the job description.'].slice(0, 6) };
+  }
+  return merged;
 }
 
 /* ------------------------------------------------------------------ */
@@ -491,9 +557,13 @@ function monthsOfExperience(exp: FitCandidate['experience'], now = new Date()): 
   return months;
 }
 
-/** Counting, not guessing: which of the job's skills the candidate has listed, and what that means. */
+/**
+ * Counting, not guessing: which of the job's skills the candidate has listed, and what that
+ * means. Only listed skills and technologies count; a project description that says
+ * "planning to learn Kubernetes" doesn't make Kubernetes a skill.
+ */
 export function computeJobFit(c: FitCandidate, a: JobAnalysis, now = new Date()): JobFit {
-  const projectTech = c.projects.flatMap((p) => [...(p.technologies ?? []), ...extractSkills(`${p.name} ${p.description ?? ''}`)]);
+  const projectTech = c.projects.flatMap((p) => p.technologies ?? []);
   const expTech = c.experience.flatMap((e) => e.technologies ?? []);
   const have = withImplied(canonicalSkillSet([...c.skills, ...projectTech, ...expTech]));
   const has = (s: string) => skillAlternatives(s).some((p) => have.has(canonicalSkill(p).toLowerCase()));
@@ -509,7 +579,7 @@ export function computeJobFit(c: FitCandidate, a: JobAnalysis, now = new Date())
   const wanted = canonicalSkillSet([...a.must_have, ...a.nice_to_have].flatMap(skillAlternatives));
   const projects = c.projects
     .map((p) => {
-      const tech = withImplied(canonicalSkillSet([...(p.technologies ?? []), ...extractSkills(`${p.name} ${p.description ?? ''}`)]));
+      const tech = withImplied(canonicalSkillSet(p.technologies ?? []));
       const matched = [...a.must_have, ...a.nice_to_have]
         .filter((s, i, arr) => arr.indexOf(s) === i)
         .flatMap((s) => skillAlternatives(s).filter((part) => tech.has(canonicalSkill(part).toLowerCase())).slice(0, 1).map(canonicalSkill));
@@ -562,7 +632,22 @@ export interface PastedContacts {
   skipped: string[];
 }
 
-const EMAIL_IN_TEXT = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+/**
+ * Addresses exactly as pasted: a line is cut at spaces and punctuation that can't be part of
+ * an address, and only pieces that are valid addresses in full are used. Part of a longer
+ * string ("joe!bob@x.com") is never taken as an address.
+ */
+function emailsIn(line: string): { emails: string[]; rejected: string[] } {
+  const emails: string[] = [];
+  const rejected: string[] = [];
+  for (const raw of line.split(/[\s<>()[\],;"|]+/)) {
+    const piece = raw.replace(/^mailto:/i, '').replace(/^['`]+|['`.:]+$/g, '');
+    if (!piece.includes('@')) continue;
+    if (isValidEmail(piece)) emails.push(piece);
+    else rejected.push(piece);
+  }
+  return { emails, rejected };
+}
 
 function splitCsvLine(line: string, delim: string): string[] {
   const out: string[] = [];
@@ -584,7 +669,9 @@ function splitCsvLine(line: string, delim: string): string[] {
   return out;
 }
 
-const looksLikeName = (s: string) => /^[\p{L}][\p{L}'.\- ]{0,58}[\p{L}.]$/u.test(s) && s.split(/\s+/).length <= 5;
+/** Words that mark a team or a role, not a person ("Talent Acquisition", "HR Team"). */
+const NOT_A_PERSON = /\b(talent|acquisition|recruit\w*|hiring|careers?|jobs?|team|hr|human|resources|people|office|admin|support|info|contact|campus|university|department)\b/i;
+const looksLikeName = (s: string) => /^[\p{L}][\p{L}'.\- ]{0,58}[\p{L}.]$/u.test(s) && s.split(/\s+/).length <= 5 && !NOT_A_PERSON.test(s);
 
 /**
  * Accepts what people actually paste: a CSV with an "email" column, lines like
@@ -628,8 +715,9 @@ export function parseContactsPaste(text: string): PastedContacts {
   for (const row of rows) {
     const line = row.trim();
     if (!line) continue;
-    const emails = line.match(EMAIL_IN_TEXT) ?? [];
-    if (!emails.length) {
+    const { emails, rejected } = emailsIn(line);
+    if (!emails.length || rejected.length) {
+      // Anything that looks like an address but isn't a valid one: skip the whole line rather than guess.
       skipped.push(line.slice(0, 200));
       continue;
     }

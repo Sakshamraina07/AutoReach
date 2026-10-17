@@ -1,11 +1,12 @@
 import { attachmentDisplayName, type MessageDetail, type MessageSummary, type PreparedEmail, type QualityFinding, type RecruiterSummary } from '@autoreach/shared';
 import { Check, Loader2, Paperclip, RefreshCw, Send } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, ApiError, idempotencyKey } from '../lib/api';
 import { fmtDate, fmtDateTime, fmtResumeSize } from '../lib/format';
 import { gmailProblem } from '../lib/gmail';
-import { useInvalidate, useMe, useMessage, useResumes } from '../lib/queries';
+import { keys, useInvalidate, useMe, useResumes } from '../lib/queries';
 import { QualityPanel } from './QualityPanel';
 import { Badge, Button, ErrorState, useToast } from './ui';
 
@@ -57,7 +58,7 @@ export function JobEmailCard(props: JobEmailCardProps) {
         <StatusBadge summary={summary} recruiter={r} />
       </header>
 
-      {r.do_not_contact ? (
+      {r.do_not_contact || r.outreach_status === 'do_not_contact' ? (
         <p className="px-4 py-3 text-sm text-muted">Marked do-not-contact. No email will be written.</p>
       ) : summary && !editable ? (
         <SentState summary={summary} />
@@ -66,7 +67,13 @@ export function JobEmailCard(props: JobEmailCardProps) {
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Writing {r.full_name ? `${r.full_name.split(' ')[0]}'s` : 'the'} email from the job and your profile…
         </p>
       ) : summary ? (
-        <DraftEditor
+        <>
+          {props.error ? (
+            <div className="px-4 pt-3">
+              <ErrorState error={props.error} />
+            </div>
+          ) : null}
+          <DraftEditor
           // A rewrite replaces the editor so its text starts from the new version.
           key={`${summary.id}:${props.prepared?.message.updated_at ?? ''}`}
           summary={summary}
@@ -74,7 +81,8 @@ export function JobEmailCard(props: JobEmailCardProps) {
           recruiter={r}
           busyElsewhere={props.busyElsewhere}
           onRewrite={(useTemplate) => props.onWrite({ regenerate: true, use_template: useTemplate })}
-        />
+          />
+        </>
       ) : (
         <div className="space-y-3 px-4 py-3">
           {props.error ? <ErrorState error={props.error} /> : <p className="text-sm text-muted">{props.queued ? 'Waiting for the email above to finish.' : 'No email yet.'}</p>}
@@ -160,9 +168,18 @@ function DraftEditor({
   busyElsewhere: boolean;
   onRewrite: (useTemplate: boolean) => void;
 }) {
-  const fetched = useMessage(prepared ? null : summary.id);
-  const message = prepared?.message ?? fetched.data ?? null;
-  if (fetched.isError) return <div className="p-4"><ErrorState error={fetched.error} onRetry={() => fetched.refetch()} /></div>;
+  // The editor starts from a copy fetched after it appeared (never an older cached one),
+  // unless this page wrote the email a moment ago and has it already.
+  const [mountedAt] = useState(() => Date.now());
+  const fetched = useQuery({
+    queryKey: keys.message(summary.id),
+    queryFn: () => api<MessageDetail>(`/api/messages/${summary.id}`),
+    enabled: !prepared,
+    refetchOnMount: 'always',
+  });
+  const fresh = fetched.data && fetched.dataUpdatedAt >= mountedAt ? fetched.data : null;
+  const message = prepared?.message ?? fresh;
+  if (fetched.isError && !prepared) return <div className="p-4"><ErrorState error={fetched.error} onRetry={() => fetched.refetch()} /></div>;
   if (!message) return <p className="px-4 py-4 text-sm text-muted">Loading the draft…</p>;
   return <DraftForm message={message} prepared={prepared} recruiter={recruiter} busyElsewhere={busyElsewhere} onRewrite={onRewrite} />;
 }
@@ -204,27 +221,46 @@ function DraftForm({
   const [refused, setRefused] = useState<ConfirmCode[]>([]);
   const [confirmed, setConfirmed] = useState<Partial<Record<ConfirmCode, boolean>>>({});
   const keyRef = useRef(idempotencyKey());
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const dirty = !sameDraft(draft, saved);
-  const edit = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const edit = (patch: Partial<Draft>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    // A "send anyway" given for earlier text doesn't cover new text: the check runs again.
+    setRefused((r) => r.filter((c) => c !== 'QUALITY_CHECK_FAILED'));
+    setConfirmed(({ QUALITY_CHECK_FAILED: _drop, ...rest }) => rest);
+  };
 
-  async function persist(d: Draft) {
-    await api(`/api/messages/${message.id}`, { method: 'PATCH', body: { subject: d.subject, body_text: d.body, resume_id: d.resumeId } });
-    setSaved(d);
-  }
+  /** Save the text and keep the cached copy in step, so coming back to the page shows this version. */
+  const persist = useCallback(
+    async (d: Draft) => {
+      const m = await api<MessageDetail>(`/api/messages/${message.id}`, { method: 'PATCH', body: { subject: d.subject, body_text: d.body, resume_id: d.resumeId } });
+      qc.setQueryData(keys.message(message.id), m);
+      setSaved(d);
+      setSaveError(null);
+    },
+    [message.id, qc],
+  );
 
   // Edits are saved a moment after typing stops.
   useEffect(() => {
     if (sameDraft(draft, saved)) return;
-    const t = setTimeout(() => {
-      api(`/api/messages/${message.id}`, { method: 'PATCH', body: { subject: draft.subject, body_text: draft.body, resume_id: draft.resumeId } })
-        .then(() => {
-          setSaved(draft);
-          setSaveError(null);
-        })
-        .catch((e: unknown) => setSaveError(e));
-    }, 900);
+    const t = setTimeout(() => persist(draft).catch((e: unknown) => setSaveError(e)), 900);
     return () => clearTimeout(t);
-  }, [draft, saved, message.id]);
+  }, [draft, saved, persist]);
+
+  // Leaving the page before the pause: save what's on screen anyway.
+  const latest = useRef({ draft, saved, persist });
+  useEffect(() => {
+    latest.current = { draft, saved, persist };
+  });
+  useEffect(
+    () => () => {
+      const l = latest.current;
+      if (!sameDraft(l.draft, l.saved)) void l.persist(l.draft).catch(() => undefined);
+    },
+    [],
+  );
 
   // The quality check runs again after edits (the server runs it once more before sending).
   const checkedFresh = !!prepared && sameDraft(draft, initial);
@@ -263,7 +299,8 @@ function DraftForm({
     setSending(true);
     setSendError(null);
     try {
-      if (!sameDraft(draft, saved)) await persist(draft);
+      // Always save what's on screen first: what is sent is exactly what is shown.
+      await persist(draft);
       const flags = Object.fromEntries(needs.filter((c) => confirmed[c]).map((c) => [CONFIRMABLE[c].field, true]));
       const res = await api<SendResponse>(`/api/messages/${message.id}/send`, { method: 'POST', headers: { 'Idempotency-Key': keyRef.current }, body: flags });
       if (res.outcome === 'failed' || res.outcome === 'unknown') {
@@ -359,12 +396,34 @@ function DraftForm({
         <Button variant="primary" icon={<Send className="h-4 w-4" />} loading={sending} disabled={empty || !!gmail || unconfirmed} onClick={send}>
           Send cold email
         </Button>
-        <Button size="sm" variant="ghost" icon={<RefreshCw className="h-3.5 w-3.5" />} disabled={sending || busyElsewhere} onClick={() => onRewrite(false)}>
+        <Button size="sm" variant="ghost" icon={<RefreshCw className="h-3.5 w-3.5" />} disabled={sending || busyElsewhere}
+          onClick={async () => {
+            // Save edits first so the rewrite can't race with them.
+            try {
+              await persist(draft);
+            } catch (e) {
+              setSaveError(e);
+              return;
+            }
+            onRewrite(false);
+          }}
+        >
           Write again
         </Button>
-        <Link to={`/outreach/new?draft=${message.id}`} className="text-sm text-muted">
+        <button
+          type="button"
+          className="text-sm text-muted underline decoration-faint/70 underline-offset-[3px] hover:text-ink"
+          onClick={async () => {
+            try {
+              await persist(draft);
+              navigate(`/outreach/new?draft=${message.id}`);
+            } catch (e) {
+              setSaveError(e);
+            }
+          }}
+        >
           Shorten, change tone or schedule
-        </Link>
+        </button>
       </div>
     </div>
   );

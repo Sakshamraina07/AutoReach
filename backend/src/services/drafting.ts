@@ -498,7 +498,14 @@ export function qualityFor(ctx: DraftContext, kind: 'initial' | 'follow_up', sub
 }
 
 export async function generateDraft(deps: Deps, tx: Tx, userId: string, req: AiDraftRequest): Promise<DraftResult> {
-  const ctx = await buildDraftContext(deps, tx, userId, req);
+  return writeDraft(deps, await buildDraftContext(deps, tx, userId, req), req);
+}
+
+/**
+ * The second half of drafting: needs no database, so callers can run the (slow) model
+ * call after their transaction has ended.
+ */
+export async function writeDraft(deps: Deps, ctx: DraftContext, req: AiDraftRequest): Promise<DraftResult> {
   const hasAttachment = !!ctx.resume;
   const step = ctx.previousMessages.filter((m) => m.kind === 'follow_up').length + 1;
   if (req.kind === 'follow_up' && !ctx.previousMessages.length) {

@@ -128,6 +128,8 @@ export async function updateOpportunity(tx: Tx, userId: string, id: string, patc
   if (patch.title !== undefined || patch.description !== undefined) {
     fields.role_category = classifyRoleCategory(patch.title ?? current.title, patch.description ?? current.description);
   }
+  // A new description makes the earlier reading of it out of date: the job page asks to read it again.
+  if (patch.description !== undefined && (patch.description ?? null) !== (current.description ?? null)) fields.analysis = null;
   if (patch.description && patch.required_skills === undefined && current.required_skills.length === 0) {
     fields.required_skills = extractSkills(patch.description);
   }

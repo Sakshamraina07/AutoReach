@@ -13,16 +13,16 @@ npm run check   # typecheck → lint → tests → production builds
 ```
 
 Result: **exit code 0**: TypeScript type checks for all four workspaces, ESLint with no
-errors or warnings, **197 of 197 tests passed**, and the production builds of the API,
+errors or warnings, **209 of 209 tests passed**, and the production builds of the API,
 dashboard and extension completed with no warnings.
 
 | Workspace | Test files | Tests | What they run against |
 |---|---|---|---|
-| `packages/shared` | 2 | 34 | Pure functions (validation, status rules, quality checks, templates, dates, job-description reading, fit, pasted contacts) |
-| `backend` | 7 | 114 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
-| `dashboard` | 3 | 15 | React components in jsdom (Testing Library) |
+| `packages/shared` | 2 | 42 | Pure functions (validation, status rules, quality checks, templates, dates, job-description reading, fit, pasted contacts) |
+| `backend` | 7 | 116 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
+| `dashboard` | 3 | 17 | React components in jsdom (Testing Library) |
 | `extension` | 7 | 34 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
-| **Total** | **19** | **197** | |
+| **Total** | **19** | **209** | |
 
 Each backend test file gets its own fresh database; the migrations run from scratch, including
 a reconstruction of the v1 schema, so the migration tests start from v1-shaped data.
@@ -36,8 +36,12 @@ Some of the new tests were run against deliberately broken code to make sure the
 * With the message lock at the start of `deleteResume` removed, the résumé-deletion test
   failed after about a second: PostgreSQL detected the deadlock between deleting the default
   résumé and a send holding that résumé's email.
-* With the recruiter lock at the start of `prepareJobEmail` removed, the "two requests at once
-  write one draft" test failed: two drafts were created for the same person.
+* With the recruiter lock in the last step of `prepareJobEmail` removed, the "two requests at
+  once write one draft" test failed in 1 of 3 runs (two drafts for the same person); it is a
+  timing race, so it doesn't fail every time.
+* With the job page's email card put back to its first version, the two dashboard tests
+  "after a failed rewrite, shows the version the server has" and "coming back to the job shows
+  the saved edit" failed: the card showed an older text than the one the server would send.
 * With the Gmail card's backoff removed, the two backoff tests failed (the card asked the
   API again on every Gmail re-render).
 
@@ -105,6 +109,25 @@ Generated from the test runner's JSON output for the run above.
 - pasted recruiter contacts › reads the common formats people paste
 - pasted recruiter contacts › reads a CSV with an email column, including quoted commas
 
+### `packages/shared/src/jobs.test.ts` (16)
+
+- job description analysis without AI › pulls out the role, company, location, skills and experience
+- checking an AI analysis against the job description › keeps what the JD supports and drops what it does not
+- checking an AI analysis against the job description › falls back to the plain analysis when the AI returns nothing usable
+- the candidate's fit › counts matches and names the projects that show them
+- the candidate's fit › names only the alternative the candidate actually has
+- the candidate's fit › is honest about experience gaps and senior roles
+- pasted recruiter contacts › reads the common formats people paste
+- pasted recruiter contacts › reads a CSV with an email column, including quoted commas
+- pasted recruiter contacts › never turns a pasted string into a different address
+- what the AI may not add › drops invented priorities: one-word quotes and points with facts the JD never states
+- what the AI may not add › only keeps a company or role the JD names, as whole words
+- what the AI may not add › keeps a deadline only when the JD writes it, and never an impossible date
+- what the AI may not add › reads the minimum of a range, and takes the experience line only as quoted
+- what the AI may not add › ignores English words that only look like skills, and treats a bare slash as "both"
+- what the AI may not add › always returns something that can be saved
+- skills the candidate has › doesn't count a skill that only appears in a project's description
+
 ### `packages/shared/src/shared.test.ts` (26)
 
 - email helpers › normalizes case and whitespace only
@@ -161,7 +184,7 @@ Generated from the test runner's JSON output for the run above.
 - opportunities › creates an opportunity, derives role category and skills, links recruiters, explains match
 - settings › stores current time-zone names even when the browser reports an old alias
 
-### `backend/test/api.jobs.test.ts` (11)
+### `backend/test/api.jobs.test.ts` (13)
 
 - reading a job description › keeps only what the job description says and shows the honest fit
 - reading a job description › falls back to a plain reading when the AI fails or replies with nonsense
@@ -172,6 +195,8 @@ Generated from the test runner's JSON output for the run above.
 - saving the job and adding people › suggests saved people at the same company who are not on the job yet
 - the email for each person › writes from the job analysis, reuses the draft, varies the opening per person and sends on approval
 - the email for each person › two requests at once write one draft
+- the email for each person › writes nothing for someone marked do-not-contact
+- the email for each person › asks to read the job again after its description is changed elsewhere
 - the email for each person › can't write emails on someone else's job
 - opening of an email › skips the greeting and keeps two sentences
 
@@ -288,10 +313,12 @@ Generated from the test runner's JSON output for the run above.
 - stacked overlays › closes a dialog nested inside a drawer first, even when both open together
 - stacked overlays › closes only the innermost one on Escape
 
-### `dashboard/src/test/jobs.test.tsx` (2)
+### `dashboard/src/test/jobs.test.tsx` (4)
 
 - job page › shows the reading with the JD’s own words, writes the email by itself and sends on one click
 - job page › saves edits before sending
+- job page › after a failed rewrite, shows the version the server has and says why
+- job page › coming back to the job shows the saved edit, not an older copy
 
 ### `extension/src/test/api.test.ts` (9)
 

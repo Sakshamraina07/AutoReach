@@ -20,6 +20,7 @@ reminded when to follow up.
   never sends on its own.
 * **Recruiter CRM**: search, filter, tags, notes, CSV import/export, duplicate detection by
   normalised email, merges that keep history, links to job opportunities.
+  ![Job page](docs/screenshots/job-page.png)
 * **Job tracker**: saved postings with skills, deadline and a status pipeline from
   "saved" to "offer".
 * **Role-specific drafts**: from your verified profile, projects and the job posting, with AI

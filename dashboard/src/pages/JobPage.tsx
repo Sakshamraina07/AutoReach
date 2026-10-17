@@ -28,8 +28,13 @@ const VERDICT_CLASS: Record<FitVerdict, string> = {
   long_shot: 'text-warn',
 };
 
-export default function JobPage() {
+/** A fresh page per job, so nothing carries over when going back and forth between two jobs. */
+export default function JobPageRoute() {
   const { id = '' } = useParams();
+  return <JobPage key={id} id={id} />;
+}
+
+function JobPage({ id }: { id: string }) {
   const job = useJob(id);
   const me = useMe();
   const qc = useQueryClient();
@@ -49,6 +54,8 @@ export default function JobPage() {
       setAttempted((a) => new Set(a).add(recruiterId));
       setWorking(recruiterId);
       setFailed(({ [recruiterId]: _drop, ...rest }) => rest);
+      // Forget the last version this page wrote: if this attempt fails, the card shows what the server has.
+      setPrepared(({ [recruiterId]: _old, ...rest }) => rest);
       try {
         const res = await api<PreparedEmail>(`/api/jobs/${id}/recruiters/${recruiterId}/email`, { method: 'POST', body: { regenerate: !!opts.regenerate, use_template: !!opts.use_template } });
         setPrepared((p) => ({ ...p, [recruiterId]: res }));
@@ -63,7 +70,7 @@ export default function JobPage() {
   );
 
   const view = job.data;
-  const next = view?.recruiters.find((r) => !view.emails[r.id] && !r.do_not_contact && !attempted.has(r.id));
+  const next = view?.recruiters.find((r) => !view.emails[r.id] && !r.do_not_contact && r.outreach_status !== 'do_not_contact' && !attempted.has(r.id));
   useEffect(() => {
     if (!working && next && view?.analysis) void prepare(next.id);
   }, [working, next, view?.analysis, prepare]);
@@ -96,7 +103,7 @@ export default function JobPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {view.analysis && <Button onClick={() => setEditing(true)}>Edit company or role</Button>}
+          <Button onClick={() => setEditing(true)}>Edit company or role</Button>
           <Link to={`/opportunities/${o.id}`} className="inline-flex h-8 items-center rounded border border-line px-3 text-sm text-muted hover:text-ink">
             Status and notes
           </Link>
@@ -133,7 +140,7 @@ export default function JobPage() {
         </div>
       )}
 
-      {editing && view.analysis && <EditJobDialog view={view} analysis={view.analysis} onClose={() => setEditing(false)} />}
+      {editing && <EditJobDialog view={view} onClose={() => setEditing(false)} />}
     </>
   );
 }
@@ -375,7 +382,7 @@ function ReadSavedJob({ view, onDone }: { view: JobView; onDone: () => void }) {
   );
 }
 
-function EditJobDialog({ view, analysis, onClose }: { view: JobView; analysis: JobAnalysis; onClose: () => void }) {
+function EditJobDialog({ view, onClose }: { view: JobView; onClose: () => void }) {
   const o = view.opportunity;
   const invalidate = useInvalidate();
   const toast = useToast();
@@ -389,10 +396,7 @@ function EditJobDialog({ view, analysis, onClose }: { view: JobView; analysis: J
     setBusy(true);
     setError(null);
     try {
-      await api('/api/jobs', {
-        method: 'POST',
-        body: { text: o.description ?? '', url: o.job_url, opportunity_id: o.id, analysis: { ...analysis, company, title, location: location.trim() || null } },
-      });
+      await api(`/api/opportunities/${o.id}`, { method: 'PATCH', body: { company: company.trim(), title: title.trim(), location: location.trim() || null } });
       await invalidate();
       toast.success('Job updated. Drafts written before this keep their wording; use “Write again” to refresh one.');
       onClose();

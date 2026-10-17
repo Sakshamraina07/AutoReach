@@ -42,7 +42,7 @@ export function jobRoutes(deps: Deps, limiters: { ai: RequestHandler }): Router 
     const id = idParam(req);
     const recruiterId = idParam(req, 'recruiterId');
     const opts = parse(z.object({ regenerate: z.boolean().default(false), use_template: z.boolean().default(false) }), req.body ?? {});
-    res.json(await deps.db.withUser(uid, (tx) => prepareJobEmail(deps, tx, uid, id, recruiterId, opts)));
+    res.json(await prepareJobEmail(deps, uid, id, recruiterId, opts));
   });
 
   return r;

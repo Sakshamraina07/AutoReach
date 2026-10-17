@@ -87,29 +87,38 @@ function view(emails: Record<string, MessageSummary>): JobView {
   };
 }
 
-function setup() {
-  let state: Record<string, MessageSummary> = {};
+function setup(o: { failRewrite?: boolean; qc?: QueryClient; written?: boolean; server?: { message: MessageDetail } } = {}) {
+  let state: Record<string, MessageSummary> = o.written ? { [ASHA_ID]: summary() } : {};
+  // What the server holds for the draft; PATCHes change it, GETs return it.
+  const server = o.server ?? { message: { ...detail } };
   const sendBodies: { key: string; body: Record<string, unknown> }[] = [];
   apiMock.mockImplementation(async (path: string, opts: { method?: string; body?: Record<string, unknown>; headers?: Record<string, string> } = {}) => {
     if (path === '/api/me') return me;
     if (path === '/api/resumes') return [{ id: 'r1', label: 'Backend', file_name: 'Sam_Kumar.pdf', size_bytes: 52_000, legacy: false, is_default: true }];
     if (path === `/api/jobs/${JOB_ID}`) return view(state);
     if (path === `/api/jobs/${JOB_ID}/suggested-recruiters`) return { recruiters: [] };
+    if (path === '/api/messages/quality-check') return { findings: [] };
     if (path === `/api/jobs/${JOB_ID}/recruiters/${ASHA_ID}/email`) {
+      if (o.failRewrite && opts.body?.regenerate) throw new ApiError(502, 'AI_PROVIDER_ERROR', 'The AI provider returned an error. Try again, or use your template.');
       state = { [ASHA_ID]: summary() };
+      server.message = { ...detail };
       return { message: detail, draft: { subject: detail.subject, body_text: BODY, source: 'ai', provider: 'gemini', model: 'gemini-3.8-flash', facts_used: [], quality: [], notes: [] }, quality: [] } satisfies PreparedEmail;
     }
     if (path === `/api/messages/${MSG_ID}/send`) {
       sendBodies.push({ key: opts.headers!['Idempotency-Key']!, body: opts.body ?? {} });
       if (!opts.body?.confirm_duplicate) throw new ApiError(409, 'DUPLICATE_OUTREACH', 'You have already emailed asha.rao@northwind-mail.example (1 message).');
       state = { [ASHA_ID]: summary({ send_status: 'sent', sent_at: '2026-10-17T10:05:00Z', next_follow_up_at: '2026-10-24T03:30:00Z' }) };
-      return { outcome: 'sent', message: { ...detail, send_status: 'sent' } };
+      return { outcome: 'sent', message: { ...server.message, send_status: 'sent' } };
     }
-    if (path.startsWith('/api/messages/')) return detail;
+    if (path === `/api/messages/${MSG_ID}` && opts.method === 'PATCH') {
+      server.message = { ...server.message, subject: String(opts.body!.subject), body_text: String(opts.body!.body_text), updated_at: new Date().toISOString() };
+      return server.message;
+    }
+    if (path === `/api/messages/${MSG_ID}`) return server.message;
     throw new Error(`unexpected call ${opts.method ?? 'GET'} ${path}`);
   });
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  const qc = o.qc ?? new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ui = (
     <QueryClientProvider client={qc}>
       <ToastProvider>
         <MemoryRouter initialEntries={[`/jobs/${JOB_ID}`]}>
@@ -118,9 +127,10 @@ function setup() {
           </Routes>
         </MemoryRouter>
       </ToastProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { sendBodies };
+  const r = render(ui);
+  return { sendBodies, server, qc, unmount: r.unmount };
 }
 
 describe('job page', () => {
@@ -165,5 +175,26 @@ describe('job page', () => {
     const sendIndex = apiMock.mock.calls.findIndex(([p]) => p === `/api/messages/${MSG_ID}/send`);
     expect(patchIndex).toBeGreaterThan(-1);
     expect(sendIndex).toBeGreaterThan(patchIndex);
+  });
+
+  it('after a failed rewrite, shows the version the server has and says why', async () => {
+    const { server } = setup({ failRewrite: true });
+    const body = (await screen.findByLabelText('Email')) as HTMLTextAreaElement;
+    fireEvent.change(body, { target: { value: 'MY EDITED TEXT' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Write again' }));
+    expect(await screen.findByText(/The AI provider returned an error/)).toBeInTheDocument();
+    expect(server.message.body_text).toBe('MY EDITED TEXT'); // saved before the rewrite
+    await waitFor(() => expect((screen.getByLabelText('Email') as HTMLTextAreaElement).value).toBe('MY EDITED TEXT'));
+  });
+
+  it('coming back to the job shows the saved edit, not an older copy', async () => {
+    const first = setup({ written: true });
+    const body = (await screen.findByLabelText('Email')) as HTMLTextAreaElement;
+    await waitFor(() => expect(body.value).toBe(BODY));
+    fireEvent.change(body, { target: { value: 'MY EDITED TEXT' } });
+    await waitFor(() => expect(first.server.message.body_text).toBe('MY EDITED TEXT'), { timeout: 3000 });
+    first.unmount();
+    setup({ written: true, qc: first.qc, server: first.server });
+    await waitFor(() => expect((screen.getByLabelText('Email') as HTMLTextAreaElement).value).toBe('MY EDITED TEXT'));
   });
 });

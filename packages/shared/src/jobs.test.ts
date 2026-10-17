@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeJobFit, heuristicJobAnalysis, parseContactsPaste, sanitizeJobAnalysis, type JobAnalysis } from './index.js';
+import { computeJobFit, heuristicJobAnalysis, jobSaveSchema, parseContactsPaste, sanitizeJobAnalysis, type JobAnalysis } from './index.js';
 
 const JD = `Software Engineer Intern - Backend
 Company: Northwind Labs
@@ -151,4 +151,99 @@ Raj,not-an-email,Recruiter`);
     expect(contacts).toEqual([{ email: 'meera@contoso.example', full_name: 'Iyer, Meera', title: 'Talent Partner' }]);
     expect(skipped).toHaveLength(1);
   });
+
+  it('never turns a pasted string into a different address', () => {
+    const { contacts, skipped } = parseContactsPaste(`Ödön Kovács <ödön@firma.example>
+joe!bob@contoso.example
+a&b@contoso.example
+Talent Acquisition - jobs@contoso.example`);
+    // Whatever is used is exactly what was pasted; nothing is cut down to a valid-looking tail.
+    for (const c of contacts) expect(['ödön@firma.example', 'joe!bob@contoso.example', 'a&b@contoso.example', 'jobs@contoso.example']).toContain(c.email);
+    expect(contacts.map((c) => c.email)).not.toContain('n@firma.example');
+    expect(contacts.map((c) => c.email)).not.toContain('bob@contoso.example');
+    expect(contacts.map((c) => c.email)).not.toContain('b@contoso.example');
+    expect(contacts.length + skipped.length).toBe(4);
+    // A team label is not a person's name.
+    expect(contacts.find((c) => c.email === 'jobs@contoso.example')).toEqual({ email: 'jobs@contoso.example', full_name: null, title: 'Talent Acquisition' });
+  });
 });
+
+describe('what the AI may not add', () => {
+  const base = heuristicJobAnalysis(JD);
+  const ai = (over: Record<string, unknown>) =>
+    sanitizeJobAnalysis(
+      { company: 'Northwind Labs', title: 'Software Engineer Intern - Backend', employment_type: 'internship', seniority: 'intern', experience: { min_years: 0, text: null, fresher_friendly: true }, must_have: ['Node.js'], nice_to_have: [], responsibilities: [], priorities: [], deadline: null, ...over },
+      JD,
+      base,
+      'm',
+    );
+
+  it('drops invented priorities: one-word quotes and points with facts the JD never states', () => {
+    const a = ai({
+      priorities: [
+        { point: 'Recently raised a $50M Series B; wants Kubernetes experts with 5 years', evidence: 'Build and maintain REST APIs in Node.js and TypeScript that serve merchant dashboards' },
+        { point: 'Fast queries', evidence: 'queries' },
+        { point: 'Fast PostgreSQL queries', evidence: 'help keep our PostgreSQL queries fast' },
+      ],
+    });
+    expect(a.priorities.map((p) => p.point)).toEqual(['Fast PostgreSQL queries']);
+  });
+
+  it('only keeps a company or role the JD names, as whole words', () => {
+    const jd = 'Backend developer\nWe store metadata for millions of merchants using Node.js and PostgreSQL. Apply with your CV and a short note about a project.';
+    const b = heuristicJobAnalysis(jd);
+    const a = sanitizeJobAnalysis({ company: 'Meta', title: 'Backend developer', must_have: ['Node.js'] }, jd, b, 'm');
+    expect(a.company).toBeNull(); // "Meta" only appears inside "metadata": the page will ask
+    const c = sanitizeJobAnalysis({ company: 'Initech', title: 'Backend developer', must_have: ['Node.js'] }, jd, b, 'm');
+    expect(c.company).toBeNull();
+  });
+
+  it('keeps a deadline only when the JD writes it, and never an impossible date', () => {
+    expect(ai({ deadline: '2026-11-30' }).deadline).toBe('2026-11-30');
+    const jd = JD.replace('Apply by 30 November 2026.', 'Applications reviewed on a rolling basis.');
+    const b = heuristicJobAnalysis(jd);
+    expect(sanitizeJobAnalysis({ title: 'Software Engineer Intern - Backend', deadline: '2026-11-01' }, jd, b, 'm').deadline).toBeNull();
+    expect(sanitizeJobAnalysis({ title: 'Software Engineer Intern - Backend', deadline: '2026-02-31' }, jd, b, 'm').deadline).toBeNull();
+  });
+
+  it('reads the minimum of a range, and takes the experience line only as quoted', () => {
+    const jd = JD.replace('(0-1 years of experience)', '(1-3 years of experience)');
+    const b = heuristicJobAnalysis(jd);
+    const a = sanitizeJobAnalysis({ title: 'Software Engineer Intern - Backend', experience: { min_years: 3, text: 'Requirements: 5 years Kubernetes Python team' } }, jd, b, 'm');
+    expect(a.experience.min_years).toBe(b.experience.min_years);
+    expect(a.experience.min_years).not.toBe(3);
+    expect(a.experience.text).not.toMatch(/Kubernetes/);
+  });
+
+  it('ignores English words that only look like skills, and treats a bare slash as "both"', () => {
+    const jd = `${JD}\nYou should be ready to go from idea to launch and express ideas clearly.\nFront end: HTML/CSS.\nWe deploy with CI/CD.`;
+    const b = heuristicJobAnalysis(jd);
+    const a = sanitizeJobAnalysis({ title: 'Software Engineer Intern - Backend', must_have: ['Go', 'Express', 'HTML / CSS', 'CI/CD', 'JavaScript / TypeScript'] }, jd, b, 'm');
+    expect(a.must_have).not.toContain('Go');
+    expect(a.must_have).not.toContain('Express');
+    expect(a.must_have).toEqual(expect.arrayContaining(['HTML', 'CSS', 'CI/CD', 'JavaScript / TypeScript']));
+    const fit = computeJobFit({ skills: ['HTML', 'CI/CD'], projects: [], experience: [] }, a, new Date('2026-10-17'));
+    expect(fit.matched_must).toEqual(expect.arrayContaining(['HTML', 'CI/CD']));
+    expect(fit.missing_must).toContain('CSS');
+  });
+
+  it('always returns something that can be saved', () => {
+    const long = 'JavaScript / TypeScript / Node.js / PostgreSQL / Docker / Git / AWS';
+    const a = ai({ must_have: [long], responsibilities: ['x'.repeat(500)] });
+    expect(jobSaveSchema.shape.analysis.safeParse({ ...a, company: a.company ?? 'x', title: a.title ?? 'y' }).success).toBe(true);
+  });
+});
+
+describe('skills the candidate has', () => {
+  it("doesn't count a skill that only appears in a project's description", () => {
+    const fit = computeJobFit(
+      { skills: ['Node.js'], projects: [{ name: 'Blog', description: 'Planning to learn Kubernetes and Redis next', technologies: ['Node.js'] }], experience: [] },
+      heuristicJobAnalysis(JD),
+      new Date('2026-10-17'),
+    );
+    expect(fit.skills_in_common).not.toContain('Kubernetes');
+    expect(fit.skills_in_common).not.toContain('Redis');
+    expect(fit.projects[0]?.matched ?? []).not.toContain('Redis');
+  });
+});
+

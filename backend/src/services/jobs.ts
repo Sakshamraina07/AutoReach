@@ -23,9 +23,9 @@ import {
 } from '@autoreach/shared';
 import type { Deps } from '../context.js';
 import type { Tx } from '../db/pool.js';
-import { notFound } from '../errors.js';
+import { notFound, unprocessable } from '../errors.js';
 import { AiProviderError, parseJsonObject } from './ai/provider.js';
-import { buildDraftContext, generateDraft, qualityFor } from './drafting.js';
+import { buildDraftContext, qualityFor, writeDraft } from './drafting.js';
 import { MESSAGE_SUMMARY_SELECT } from './messageQueries.js';
 import { createDraft, getMessageDetail, updateDraft } from './messages.js';
 import { createOpportunity, getOpportunity, updateOpportunity } from './opportunities.js';
@@ -114,7 +114,7 @@ export async function getJob(deps: Deps, tx: Tx, userId: string, opportunityId: 
 
 async function latestEmails(tx: Tx, userId: string, opportunityId: string): Promise<Record<string, MessageSummary>> {
   const rows = await tx.many<MessageSummary>(
-    `SELECT DISTINCT ON (x.recruiter_id) x.* FROM (${MESSAGE_SUMMARY_SELECT} WHERE m.user_id = $1 AND m.opportunity_id = $2 AND m.recruiter_id IS NOT NULL) x
+    `SELECT DISTINCT ON (x.recruiter_id) x.* FROM (${MESSAGE_SUMMARY_SELECT} WHERE m.user_id = $1 AND m.opportunity_id = $2 AND m.recruiter_id IS NOT NULL AND m.kind = 'initial') x
      ORDER BY x.recruiter_id, x.created_at DESC`,
     [userId, opportunityId],
   );
@@ -134,69 +134,94 @@ export function openingOf(body: string): string {
  * The email for one recruiter on this job: reuses the saved draft (or shows what was
  * already sent), or writes a new one from the job analysis and the candidate's profile.
  * Nothing is sent here; sending is always a separate, explicit action.
+ *
+ * Three short steps so no lock or database connection is held while the model writes:
+ * read (and return an existing draft), write with no transaction open, then store under a
+ * lock on the recruiter, re-checking for a draft another request stored meanwhile.
  */
 export async function prepareJobEmail(
   deps: Deps,
-  tx: Tx,
   userId: string,
   opportunityId: string,
   recruiterId: string,
   opts: { regenerate: boolean; use_template: boolean },
 ): Promise<PreparedEmail> {
-  const opp = await getOpportunity(tx, userId, opportunityId);
-  if (!opp) throw notFound('Job');
-  // Serialise concurrent requests for the same recruiter (double click, two tabs) so only one draft is written.
-  const locked = await tx.maybeOne(`SELECT 1 FROM recruiters WHERE user_id = $1 AND id = $2 AND merged_into_id IS NULL FOR UPDATE`, [userId, recruiterId]);
-  if (!locked) throw notFound('Recruiter');
+  type Existing = { id: string; send_status: string; subject: string; body_text: string; resume_id: string | null };
+  const findExisting = (tx: Tx) =>
+    tx.maybeOne<Existing>(
+      `SELECT id, send_status, subject, body_text, resume_id FROM email_messages
+       WHERE user_id = $1 AND opportunity_id = $2 AND recruiter_id = $3 AND kind = 'initial'
+       ORDER BY created_at DESC LIMIT 1`,
+      [userId, opportunityId, recruiterId],
+    );
+  const isEditable = (e: Existing | null): e is Existing => !!e && ['draft', 'failed'].includes(e.send_status);
+  const show = async (tx: Tx, e: Existing): Promise<PreparedEmail> => {
+    const message = await getMessageDetail(tx, userId, e.id);
+    if (!isEditable(e)) return { message, draft: null, quality: [] };
+    const ctx = await buildDraftContext(deps, tx, userId, { recruiter_id: recruiterId, opportunity_id: opportunityId, resume_id: e.resume_id, kind: 'initial' });
+    return { message, draft: null, quality: qualityFor(ctx, 'initial', e.subject, e.body_text, !!e.resume_id) };
+  };
 
-  const existing = await tx.maybeOne<{ id: string; send_status: string; subject: string; body_text: string; resume_id: string | null }>(
-    `SELECT id, send_status, subject, body_text, resume_id FROM email_messages
-     WHERE user_id = $1 AND opportunity_id = $2 AND recruiter_id = $3 AND kind = 'initial'
-     ORDER BY created_at DESC LIMIT 1`,
-    [userId, opportunityId, recruiterId],
-  );
-  const editable = existing && ['draft', 'failed'].includes(existing.send_status);
-  if (existing && (!editable || !opts.regenerate)) {
-    const message = await getMessageDetail(tx, userId, existing.id);
-    if (!editable) return { message, draft: null, quality: [] };
-    const ctx = await buildDraftContext(deps, tx, userId, { recruiter_id: recruiterId, opportunity_id: opportunityId, resume_id: existing.resume_id, kind: 'initial' });
-    return { message, draft: null, quality: qualityFor(ctx, 'initial', existing.subject, existing.body_text, !!existing.resume_id) };
-  }
-
-  // Openings already written for other people on this job, so each email reads differently.
-  const others = await tx.many<{ body_text: string }>(
-    `SELECT body_text FROM email_messages WHERE user_id = $1 AND opportunity_id = $2 AND recruiter_id <> $3 AND kind = 'initial' AND body_text <> ''
-     ORDER BY created_at DESC LIMIT 5`,
-    [userId, opportunityId, recruiterId],
-  );
-  const avoid = [...(editable ? [existing.body_text] : []), ...others.map((o) => o.body_text)].map(openingOf).filter(Boolean).slice(0, 6);
-
-  const draft = await generateDraft(deps, tx, userId, {
-    recruiter_id: recruiterId,
-    opportunity_id: opportunityId,
-    resume_id: editable ? existing.resume_id : undefined,
-    kind: 'initial',
-    goal: 'interview_consideration',
-    use_template: opts.use_template,
-    avoid_openings: avoid,
-  });
-  const meta = { source: draft.source, provider: draft.provider, model: draft.model, facts_used: draft.facts_used };
-  let message: MessageDetail;
-  if (editable) {
-    await updateDraft(tx, userId, existing.id, { subject: draft.subject, body_text: draft.body_text });
-    await tx.query(`UPDATE email_messages SET ai_generated = $3, generation_meta = $4::jsonb WHERE user_id = $1 AND id = $2`, [userId, existing.id, draft.source === 'ai', JSON.stringify(meta)]);
-    message = await getMessageDetail(tx, userId, existing.id);
-  } else {
-    message = await createDraft(deps, tx, userId, {
+  // 1. Read.
+  const first = await deps.db.withUser(userId, async (tx) => {
+    if (!(await getOpportunity(tx, userId, opportunityId))) throw notFound('Job');
+    const rec = await tx.maybeOne<{ do_not_contact: boolean; outreach_status: string }>(
+      `SELECT do_not_contact, outreach_status FROM recruiters WHERE user_id = $1 AND id = $2 AND merged_into_id IS NULL`,
+      [userId, recruiterId],
+    );
+    if (!rec) throw notFound('Recruiter');
+    const existing = await findExisting(tx);
+    if (existing && (!isEditable(existing) || !opts.regenerate)) return { done: await show(tx, existing) } as const;
+    if (rec.do_not_contact || rec.outreach_status === 'do_not_contact') throw unprocessable('DO_NOT_CONTACT', 'This person is marked do-not-contact, so no email is written.');
+    // Openings already written for other people on this job, so each email reads differently.
+    const others = await tx.many<{ body_text: string }>(
+      `SELECT body_text FROM email_messages WHERE user_id = $1 AND opportunity_id = $2 AND recruiter_id <> $3 AND kind = 'initial' AND body_text <> ''
+       ORDER BY created_at DESC LIMIT 5`,
+      [userId, opportunityId, recruiterId],
+    );
+    const req = {
       recruiter_id: recruiterId,
       opportunity_id: opportunityId,
-      subject: draft.subject,
-      body_text: draft.body_text,
-      ai_generated: draft.source === 'ai',
-      generation_meta: meta,
-    });
-  }
-  return { message, draft, quality: draft.quality };
+      resume_id: existing ? existing.resume_id : undefined,
+      kind: 'initial' as const,
+      goal: 'interview_consideration' as const,
+      use_template: opts.use_template,
+      avoid_openings: [...(existing ? [existing.body_text] : []), ...others.map((o) => o.body_text)].map(openingOf).filter(Boolean).slice(0, 6),
+    };
+    return { done: null, req, ctx: await buildDraftContext(deps, tx, userId, req), basedOn: existing?.id ?? null } as const;
+  });
+  if (first.done) return first.done;
+
+  // 2. Write, with no transaction open.
+  const draft = await writeDraft(deps, first.ctx, first.req);
+  const meta = { source: draft.source, provider: draft.provider, model: draft.model, facts_used: draft.facts_used };
+
+  // 3. Store.
+  return deps.db.withUser(userId, async (tx) => {
+    // Serialise with other requests for this person (double click, two tabs).
+    await tx.query(`SELECT 1 FROM recruiters WHERE user_id = $1 AND id = $2 FOR UPDATE`, [userId, recruiterId]);
+    const now = await findExisting(tx);
+    if (now && (now.id !== first.basedOn || !isEditable(now))) {
+      // Another request stored a draft (or the email was sent) meanwhile: show that one.
+      return show(tx, now);
+    }
+    let message: MessageDetail;
+    if (now) {
+      await updateDraft(tx, userId, now.id, { subject: draft.subject, body_text: draft.body_text });
+      await tx.query(`UPDATE email_messages SET ai_generated = $3, generation_meta = $4::jsonb WHERE user_id = $1 AND id = $2`, [userId, now.id, draft.source === 'ai', JSON.stringify(meta)]);
+      message = await getMessageDetail(tx, userId, now.id);
+    } else {
+      message = await createDraft(deps, tx, userId, {
+        recruiter_id: recruiterId,
+        opportunity_id: opportunityId,
+        subject: draft.subject,
+        body_text: draft.body_text,
+        ai_generated: draft.source === 'ai',
+        generation_meta: meta,
+      });
+    }
+    return { message, draft, quality: draft.quality };
+  });
 }
 
 /** Save (or update) the job as an opportunity with the confirmed analysis. */
@@ -239,7 +264,9 @@ export async function addRecruitersToJob(
   const { contacts, skipped } = parseContactsPaste(input.text);
   let added = 0;
   let alreadySaved = 0;
-  for (const c of contacts.slice(0, 200)) {
+  const LIMIT = 200;
+  if (contacts.length > LIMIT) skipped.push(`${contacts.length - LIMIT} more ${contacts.length - LIMIT === 1 ? 'address' : 'addresses'} (up to ${LIMIT} people can be added at once)`);
+  for (const c of contacts.slice(0, LIMIT)) {
     const existing = await findActiveByEmail(tx, userId, c.email);
     if (existing) {
       alreadySaved++;

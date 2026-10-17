@@ -278,6 +278,24 @@ describe('the email for each person', () => {
     expect(rows[0]!.n).toBe(1);
   });
 
+  it('writes nothing for someone marked do-not-contact', async () => {
+    const job = await analyzeAndSave();
+    const rec = (await env.api(user.token).post(`/api/jobs/${job.opportunity.id}/recruiters`, { text: 'nope@northwind-dnc.example' }).expect(200)).body.recruiters[0];
+    await env.api(user.token).patch(`/api/recruiters/${rec.id}`, { do_not_contact: true }).expect(200);
+    const before = env.ai.calls.length;
+    const r = await env.api(user.token).post(`/api/jobs/${job.opportunity.id}/recruiters/${rec.id}/email`, {}).expect(422);
+    expect(r.body.error.code).toBe('DO_NOT_CONTACT');
+    expect(env.ai.calls.length).toBe(before);
+  });
+
+  it('asks to read the job again after its description is changed elsewhere', async () => {
+    const job = await analyzeAndSave();
+    await env.api(user.token).patch(`/api/opportunities/${job.opportunity.id}`, { title: 'Backend Intern (renamed)' }).expect(200);
+    expect((await env.api(user.token).get(`/api/jobs/${job.opportunity.id}`).expect(200)).body.analysis).not.toBeNull();
+    await env.api(user.token).patch(`/api/opportunities/${job.opportunity.id}`, { description: `${JD}\nUpdated: now also Go.` }).expect(200);
+    expect((await env.api(user.token).get(`/api/jobs/${job.opportunity.id}`).expect(200)).body.analysis).toBeNull();
+  });
+
   it("can't write emails on someone else's job", async () => {
     const job = await analyzeAndSave();
     const rec = (await env.api(stranger.token).post('/api/recruiters', { email: 'y@contoso.example', company: 'Contoso' }).expect(201)).body;

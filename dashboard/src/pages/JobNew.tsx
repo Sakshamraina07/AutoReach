@@ -22,7 +22,9 @@ export default function JobNew() {
   // Shown only when the posting doesn't say which company or role it is.
   const [missing, setMissing] = useState<{ result: JobAnalysisResult; company: string; title: string } | null>(null);
 
-  const cleanUrl = url.trim() || null;
+  // A link pasted without "https://" still counts; anything else that isn't a web link is left out.
+  const trimmedUrl = url.trim();
+  const cleanUrl = !trimmedUrl ? null : /^https?:\/\//i.test(trimmedUrl) ? trimmedUrl : /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(trimmedUrl) ? `https://${trimmedUrl}` : null;
   const tooShort = text.trim().length < MIN_CHARS;
 
   async function save(result: JobAnalysisResult, company: string, title: string) {
@@ -39,7 +41,7 @@ export default function JobNew() {
     setError(null);
     setBusy('reading');
     try {
-      const result = await api<JobAnalysisResult>('/api/jobs/analyze', { method: 'POST', body: { text, url: cleanUrl } });
+      const result = await api<JobAnalysisResult>('/api/jobs/analyze', { method: 'POST', body: { text } });
       const { company, title } = result.analysis;
       if (company && title) await save(result, company, title);
       else {
@@ -85,7 +87,12 @@ export default function JobNew() {
             disabled={!!busy}
           />
         </Field>
-        <Field label="Link to the posting (optional)" htmlFor="jd-url" hint="Saved with the job so you can find it again. AutoReach doesn't open the link.">
+        <Field
+          label="Link to the posting (optional)"
+          htmlFor="jd-url"
+          hint="Saved with the job so you can find it again. AutoReach doesn't open the link."
+          error={url.trim() && !cleanUrl ? 'This isn’t a web link, so it won’t be saved.' : null}
+        >
           <input id="jd-url" type="url" className="field" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" disabled={!!busy} />
         </Field>
 
@@ -114,7 +121,7 @@ export default function JobNew() {
               {busy === 'saving' ? 'Saving' : busy === 'reading' ? 'Reading the job description' : 'Read job description'}
             </Button>
             <span className="text-xs text-faint">
-              {me.data?.ai.configured ? `Read by ${me.data.ai.provider ?? 'AI'}, then checked against your text.` : 'AI isn’t set up on the server, so this is a plain keyword reading.'}
+              {me.data?.ai.configured ? `Read by ${me.data.ai.model ?? me.data.ai.provider ?? 'AI'}, then checked against your text.` : 'AI isn’t set up on the server, so this is a plain keyword reading.'}
             </span>
           </div>
         )}
