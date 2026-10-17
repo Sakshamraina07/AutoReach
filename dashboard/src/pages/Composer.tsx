@@ -272,7 +272,7 @@ export default function Composer() {
         {/* ---------------- context column ---------------- */}
         <div className="space-y-4">
           <section className="panel space-y-3 p-4">
-            <Field label="Opportunity" htmlFor="c-opp">
+            <Field label="Job" htmlFor="c-opp">
               <select id="c-opp" className="field" value={opportunityId} onChange={(e) => setOpportunityId(e.target.value)} disabled={kind === 'follow_up' && !!draftId}>
                 <option value="">No saved posting</option>
                 {opps.data?.items.map((o) => (

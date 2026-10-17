@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom';
 import { SentRepliesChart } from '../components/charts';
 import { Badge, ErrorState, PageHeader, SectionTitle, Spinner, Tabs } from '../components/ui';
 import { fmtPct, plural } from '../lib/format';
-import { useBreakdown, useInsights, useOverview, useRecommendations, useTimeseries } from '../lib/queries';
+import { useBreakdown, useInsights, useMe, useOverview, useRecommendations, useTimeseries } from '../lib/queries';
+import { TRACKING_OFF_NOTE } from '../lib/tracking';
 
 const RANGES = ['7d', '30d', '90d', '365d', 'all'] as const;
 const RANGE_LABEL: Record<(typeof RANGES)[number], string> = { '7d': '7 days', '30d': '30 days', '90d': '90 days', '365d': '12 months', all: 'All time' };
@@ -17,6 +18,8 @@ export default function Analytics() {
   const breakdown = useBreakdown(by, range);
   const insights = useInsights(range);
   const recs = useRecommendations();
+  const me = useMe();
+  const trackingOn = me.data?.tracking.configured ?? true;
   const k = overview.data?.kpis;
 
   return (
@@ -41,7 +44,7 @@ export default function Analytics() {
             { label: 'Sent successfully', value: String(k.emails_sent.value) },
             { label: 'Replies', value: String(k.replies.value) },
             { label: 'Response rate', value: fmtPct(k.response_rate.value), note: `of ${plural(k.response_rate.sample, 'first email')}` },
-            { label: 'Opens detected', value: String(k.opens_detected.value), note: 'approximate' },
+            trackingOn ? { label: 'Opens detected', value: String(k.opens_detected.value), note: 'approximate' } : { label: 'Opens detected', value: 'Off', note: TRACKING_OFF_NOTE },
           ].map((c) => (
             <div key={c.label} className="bg-surface px-4 py-3">
               <div className="text-xs text-muted">{c.label}</div>
@@ -141,13 +144,13 @@ export default function Analytics() {
             )}
           </section>
           <section className="panel">
-            <SectionTitle>Opportunities to work on</SectionTitle>
+            <SectionTitle>Jobs to work on</SectionTitle>
             {!recs.data ? (
               <div className="px-4">
                 <Spinner />
               </div>
             ) : recs.data.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-muted">No active opportunities.</p>
+              <p className="px-4 py-6 text-sm text-muted">No active jobs.</p>
             ) : (
               <ol className="divide-y divide-line/60">
                 {recs.data.map((r) => (

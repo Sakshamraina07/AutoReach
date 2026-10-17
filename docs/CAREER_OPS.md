@@ -84,7 +84,12 @@ in `D:/AutoReach/career-ops` and it sets these files up by chatting.
 
 ## 5. The daily routine
 
-In `D:/AutoReach/career-ops` (PowerShell):
+Start AutoReach first: double-click `start-autoreach.cmd` in `D:\AutoReach`. It opens the
+"AutoReach API" and "AutoReach dashboard" windows and then your browser at
+http://localhost:5173. Leave both windows open. Sending, reply checks and follow-ups only
+run while the API window is open.
+
+Then in `D:/AutoReach/career-ops` (PowerShell):
 
 ```powershell
 npm run scan                                      # find new postings (uses no AI)

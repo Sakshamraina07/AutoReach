@@ -3,10 +3,11 @@ import { clsx } from 'clsx';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SentRepliesChart } from '../components/charts';
+import { GettingStarted } from '../components/GettingStarted';
 import { StatusTrack, TrackLegend } from '../components/StatusTrack';
 import { Button, EmptyState, ErrorState, PageHeader, SectionTitle, Spinner } from '../components/ui';
 import { fmtPct, fmtShortDate, plural, relative } from '../lib/format';
-import { useActivity, useFollowUps, useMessages, useOverview, useRecommendations, useReviewQueue, useTimeseries } from '../lib/queries';
+import { useActivity, useFollowUps, useMe, useMessages, useOpportunities, useOverview, useRecommendations, useReviewQueue, useTimeseries } from '../lib/queries';
 
 const RANGES = [
   { value: '7d', label: '7 days' },
@@ -34,7 +35,14 @@ export default function Overview() {
   const recs = useRecommendations();
   const activity = useActivity({ page_size: 12 });
   const review = useReviewQueue();
+  const me = useMe();
+  // One sent email anywhere in history ends the getting-started checklist.
+  const sent = useMessages({ send_status: 'sent', page_size: 1 });
+  const jobs = useOpportunities({ page_size: 1 });
   const navigate = useNavigate();
+
+  const trackingOn = me.data?.tracking.configured ?? true;
+  const showChecklist = !!me.data && !!sent.data && !!jobs.data && sent.data.total === 0;
 
   const k = overview.data?.kpis;
   const cells = k
@@ -44,7 +52,7 @@ export default function Overview() {
         { label: 'Sent successfully', value: k.emails_sent.value, delta: k.emails_sent, to: '/outreach?send_status=sent', note: 'accepted by Gmail' },
         { label: 'Replies', value: k.replies.value, delta: k.replies, to: '/outreach?reply_status=replied', note: 'detected in your threads' },
         { label: 'Follow-ups due', value: k.followups_due.value, delta: k.followups_due, to: '/followups', note: 'today or overdue', warn: k.followups_due.value > 0 },
-        { label: 'Active opportunities', value: k.active_opportunities.value, delta: k.active_opportunities, to: '/opportunities', note: 'not closed' },
+        { label: 'Active jobs', value: k.active_opportunities.value, delta: k.active_opportunities, to: '/opportunities', note: 'not closed' },
       ]
     : [];
 
@@ -52,7 +60,11 @@ export default function Overview() {
     <>
       <PageHeader
         title="Overview"
-        description="Everything below comes from your own records. Opens are approximate; replies come from your Gmail threads."
+        description={
+          trackingOn
+            ? 'Everything below comes from your own records. Opens are approximate; replies come from your Gmail threads.'
+            : 'Everything below comes from your own records. Replies come from your Gmail threads.'
+        }
         actions={
           <div role="group" aria-label="Period" className="flex rounded border border-line p-0.5">
             {RANGES.map((r) => (
@@ -69,6 +81,8 @@ export default function Overview() {
           </div>
         }
       />
+
+      {showChecklist && me.data && jobs.data && <GettingStarted me={me.data} hasJob={jobs.data.total > 0} />}
 
       {overview.isError ? (
         <ErrorState error={overview.error} onRetry={() => overview.refetch()} />
@@ -92,8 +106,13 @@ export default function Overview() {
         <p className="mt-2 text-xs text-muted">
           Response rate{' '}
           <span className="num font-medium text-ink">{fmtPct(k.response_rate.value)}</span> across {plural(k.response_rate.sample, 'first email')} in this period
-          {k.response_rate.sample > 0 && k.response_rate.sample < 10 ? ' — small sample, treat as directional' : ''}. Opens detected:{' '}
-          <span className="num text-ink">{k.opens_detected.value}</span> (approximate).
+          {k.response_rate.sample > 0 && k.response_rate.sample < 10 ? ' — small sample, treat as directional' : ''}.
+          {trackingOn && (
+            <>
+              {' '}
+              Opens detected: <span className="num text-ink">{k.opens_detected.value}</span> (approximate).
+            </>
+          )}
         </p>
       )}
 
@@ -121,8 +140,20 @@ export default function Overview() {
               <Spinner />
             </div>
           ) : recent.data.items.length === 0 ? (
-            <EmptyState title="No outreach yet" action={<Button variant="primary" onClick={() => navigate('/outreach/new')}>Write your first email</Button>}>
-              Pick a recruiter and a role, generate a draft from your profile, review it, then send it from your Gmail.
+            <EmptyState
+              title="No outreach yet"
+              action={
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="primary" onClick={() => navigate('/jobs/new')}>
+                    New job
+                  </Button>
+                  <Link to="/outreach/new" className="text-xs text-muted hover:text-ink">
+                    Write a single email
+                  </Link>
+                </div>
+              }
+            >
+              Paste a job posting or open one from career-ops, add the people to write to, and AutoReach drafts one email per person for you to review and send from your Gmail.
             </EmptyState>
           ) : (
             <div className="overflow-x-auto">
@@ -197,7 +228,7 @@ export default function Overview() {
           </section>
 
           <section className="panel" aria-labelledby="next-h">
-            <SectionTitle actions={<Link to="/opportunities" className="text-xs">Opportunities</Link>}>
+            <SectionTitle actions={<Link to="/opportunities" className="text-xs">Jobs</Link>}>
               <span id="next-h">Where to focus next</span>
             </SectionTitle>
             {!recs.data ? (
@@ -206,7 +237,7 @@ export default function Overview() {
               </div>
             ) : recs.data.length === 0 ? (
               <p className="px-4 py-6 text-sm text-muted">
-                Save job postings in <Link to="/opportunities">Opportunities</Link> to get suggestions based on your skills, deadlines and progress.
+                Save job postings in <Link to="/opportunities">Jobs</Link> to get suggestions based on your skills, deadlines and progress.
               </p>
             ) : (
               <ul className="divide-y divide-line/60">

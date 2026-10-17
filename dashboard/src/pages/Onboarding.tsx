@@ -243,7 +243,7 @@ function GmailStep() {
   const g = me.data?.gmail;
   if (!g) return <Spinner />;
   if (!g.configured)
-    return <p className="rounded border border-line bg-raised p-3 text-sm text-muted">Gmail sending isn't configured on this server yet. You can still set up recruiters, opportunities and drafts; the administrator needs to add Google OAuth credentials before emails can be sent.</p>;
+    return <p className="rounded border border-line bg-raised p-3 text-sm text-muted">Gmail sending isn't configured on this server yet. You can still set up recruiters, jobs and drafts; the administrator needs to add Google OAuth credentials before emails can be sent.</p>;
   if (g.connected && g.status === 'active')
     return (
       <p className="flex items-center gap-2 text-sm">

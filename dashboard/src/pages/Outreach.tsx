@@ -4,7 +4,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { StatusTrack, TrackLegend } from '../components/StatusTrack';
 import { Badge, Button, EmptyState, ErrorState, PageHeader, Pagination, Spinner, Tabs } from '../components/ui';
 import { fmtShortDate } from '../lib/format';
-import { useMessages } from '../lib/queries';
+import { useMe, useMessages } from '../lib/queries';
+import { TRACKING_OFF_NOTE } from '../lib/tracking';
 
 type View = 'all' | 'draft' | 'queued' | 'sent' | 'failed' | 'unknown' | 'replied';
 
@@ -27,12 +28,18 @@ export default function Outreach() {
   const navigate = useNavigate();
   const v = VIEWS.find((x) => x.value === view)!;
   const list = useMessages({ ...v.params, q, page, page_size: 25 });
+  const me = useMe();
+  const trackingOn = me.data?.tracking.configured ?? true;
 
   return (
     <>
       <PageHeader
         title="Outreach"
-        description="Every email you drafted or sent. Sent means Gmail accepted it; opens are approximate; replies come from your Gmail threads."
+        description={
+          trackingOn
+            ? 'Every email you drafted or sent. Sent means Gmail accepted it; opens are approximate; replies come from your Gmail threads.'
+            : `Every email you drafted or sent. Sent means Gmail accepted it; replies come from your Gmail threads. ${TRACKING_OFF_NOTE}`
+        }
         actions={
           <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => navigate('/outreach/new')}>
             New outreach
