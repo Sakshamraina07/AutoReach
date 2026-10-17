@@ -360,8 +360,12 @@ describe('tracking', () => {
     await request(env.app).get(`/t/${pixels[0]}.gif`).set('User-Agent', 'Mozilla/5.0 (via ggpht.com GoogleImageProxy)');
     await request(env.app).get(`/t/${pixels[0]}.gif`).set('User-Agent', 'Mozilla/5.0 (via ggpht.com GoogleImageProxy)');
     await request(env.app).get(`/t/${pixels[0]}.gif`).set('User-Agent', 'python-requests/2.31');
-    await new Promise((r) => setTimeout(r, 200));
-    m1 = (await env.api(user.token).get(`/api/messages/${d1.id}`).expect(200)).body;
+    // Hits are recorded after the pixel is served; wait until all four events have landed.
+    for (let i = 0; i < 50; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      m1 = (await env.api(user.token).get(`/api/messages/${d1.id}`).expect(200)).body;
+      if (m1.events.length >= 4) break;
+    }
     expect(m1.first_open_at).not.toBeNull();
     expect(m1.open_event_count).toBe(1); // second proxy hit de-duplicated, scanner not counted
     expect(m1.events.map((e: { classification: string }) => e.classification).sort()).toEqual(['proxy', 'proxy', 'suspected_automated', 'suspected_self']);

@@ -16,13 +16,20 @@ export interface PgServer {
   stop: () => void;
 }
 
+const isWindows = process.platform === 'win32';
+const EXE = isWindows ? '.exe' : '';
+
 function findPgBin(): string | null {
-  if (process.env.PG_BIN && fs.existsSync(path.join(process.env.PG_BIN, 'initdb'))) return process.env.PG_BIN;
-  const root = '/usr/lib/postgresql';
-  if (fs.existsSync(root)) {
+  if (process.env.PG_BIN && fs.existsSync(path.join(process.env.PG_BIN, `initdb${EXE}`))) return process.env.PG_BIN;
+  const roots = isWindows
+    ? [path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'PostgreSQL'), 'D:\\pgsql', 'C:\\pgsql']
+    : ['/usr/lib/postgresql'];
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    if (fs.existsSync(path.join(root, 'bin', `initdb${EXE}`))) return path.join(root, 'bin');
     const versions = fs
       .readdirSync(root)
-      .filter((v) => fs.existsSync(path.join(root, v, 'bin', 'initdb')))
+      .filter((v) => fs.existsSync(path.join(root, v, 'bin', `initdb${EXE}`)))
       .sort((a, b) => Number(b) - Number(a));
     if (versions[0]) return path.join(root, versions[0], 'bin');
   }
@@ -62,16 +69,30 @@ export async function startPgServer(): Promise<PgServer> {
   const dataDir = path.join(dir, 'data');
   const port = await freePort();
   const run = (cmd: string, args: string[]) => {
-    const full = runAs ? ['runuser', ['-u', runAs, '--', path.join(bin, cmd), ...args]] : [path.join(bin, cmd), args];
-    const res = spawnSync(full[0] as string, full[1] as string[], { encoding: 'utf8' });
-    if (res.status !== 0) throw new Error(`${cmd} failed: ${res.stderr || res.stdout}`);
+    const exe = path.join(bin, `${cmd}${EXE}`);
+    const full = runAs ? ['runuser', ['-u', runAs, '--', exe, ...args]] : [exe, args];
+    // `pg_ctl start` leaves a server running that inherits pg_ctl's stdio. With
+    // pipes, spawnSync would wait for the server to exit (notably on Windows),
+    // so send the command's output to a file instead and read it back.
+    const outFile = path.join(dir, `${cmd}-${args.includes('start') ? 'start' : 'cmd'}.out`);
+    const fd = fs.openSync(outFile, 'w');
+    let res;
+    try {
+      res = spawnSync(full[0] as string, full[1] as string[], { stdio: ['ignore', fd, fd] });
+    } finally {
+      fs.closeSync(fd);
+    }
+    if (res.status !== 0) {
+      const out = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8') : '';
+      throw new Error(`${cmd} failed: ${out || res.error?.message || `exit ${res.status}`}`);
+    }
   };
   run('initdb', ['-D', dataDir, '-U', 'postgres', '--auth=trust', '-E', 'UTF8', '--no-sync']);
   run('pg_ctl', [
     '-D',
     dataDir,
     '-o',
-    `-p ${port} -k ${dir} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=200`,
+    `-p ${port}${isWindows ? '' : ` -k ${dir}`} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c full_page_writes=off -c max_connections=200`,
     '-l',
     path.join(dir, 'server.log'),
     '-w',
