@@ -219,3 +219,23 @@ describe('EXTENSION_IDS', () => {
     expect(() => loadConfig({ ...base, EXTENSION_IDS: 'not-an-id' })).toThrow(ConfigError);
   });
 });
+
+describe('blank .env lines', () => {
+  it('treat KEY= as "not set" and fall back to the defaults', () => {
+    const c = loadConfig({
+      DATABASE_URL: 'postgres://u@db.example.com/db',
+      SUPABASE_URL: 'https://x.supabase.co',
+      SUPABASE_ANON_KEY: 'anon',
+      DATABASE_SSL: '',
+      STORAGE_DRIVER: '',
+      AI_PROVIDER: '',
+      PORT: '',
+      DB_RLS_ROLE: '  ',
+      LOG_LEVEL: '',
+    });
+    expect(c.database.ssl).toBe('no-verify');
+    expect(c.port).toBe(3001);
+    expect(c.ai.provider).toBeNull();
+    expect(c.database.rlsRole).toBe('autoreach_app');
+  });
+});

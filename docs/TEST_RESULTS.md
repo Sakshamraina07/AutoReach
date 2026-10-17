@@ -13,16 +13,16 @@ npm run check   # typecheck → lint → tests → production builds
 ```
 
 Result: **exit code 0**: TypeScript type checks for all four workspaces, ESLint with no
-errors or warnings, **171 of 171 tests passed**, and the production builds of the API,
+errors or warnings, **172 of 172 tests passed**, and the production builds of the API,
 dashboard and extension completed with no warnings.
 
 | Workspace | Test files | Tests | What they run against |
 |---|---|---|---|
 | `packages/shared` | 1 | 26 | Pure functions (validation, status rules, quality checks, templates, dates) |
-| `backend` | 6 | 98 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
+| `backend` | 6 | 99 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
 | `dashboard` | 2 | 13 | React components in jsdom (Testing Library) |
 | `extension` | 7 | 34 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
-| **Total** | **16** | **171** | |
+| **Total** | **16** | **172** | |
 
 Each backend test file gets its own fresh database; the migrations run from scratch, including
 a reconstruction of the v1 schema, so the migration tests start from v1-shaped data.
@@ -212,7 +212,7 @@ Generated from the test runner's JSON output for the run above.
 - migration on the production v1 schema › closes the older users table to the public API roles
 - migration on the production v1 schema › imports v1 Gmail tokens, skipping rows without a live account
 
-### `backend/test/unit.test.ts` (16)
+### `backend/test/unit.test.ts` (17)
 
 - crypto › round-trips with AES-256-GCM and detects tampering
 - crypto › computes RFC 7636 S256 challenges
@@ -230,6 +230,7 @@ Generated from the test runner's JSON output for the run above.
 - contact discovery suggestions › degrades to patterns when the lookup service fails
 - résumé storage ownership › accepts only the user’s own 2.0 and v1 object keys
 - EXTENSION_IDS › accepts Chrome extension IDs and rejects anything else
+- blank .env lines › treat KEY= as "not set" and fall back to the defaults
 
 ### `dashboard/src/test/components.test.tsx` (8)
 

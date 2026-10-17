@@ -136,7 +136,9 @@ function decodeKey(raw: string | undefined, problems: string[]): Buffer | undefi
 }
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
-  const parsed = EnvSchema.safeParse(source);
+  // A blank line in .env (`DATABASE_SSL=`) means "not set": use the default, as .env.example intends.
+  const present = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v.trim() !== ''));
+  const parsed = EnvSchema.safeParse(present);
   if (!parsed.success) {
     throw new ConfigError(parsed.error.issues.map((i) => `${i.path.join('.') || 'env'}: ${i.message}`));
   }
@@ -221,7 +223,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       ssl,
       caCert: e.DATABASE_CA_CERT,
       poolMax: e.DATABASE_POOL_MAX,
-      rlsRole: e.DB_RLS_ROLE.trim() === '' ? null : e.DB_RLS_ROLE.trim(),
+      rlsRole: e.DB_RLS_ROLE.trim(),
     },
     supabase: {
       url: e.SUPABASE_URL?.replace(/\/+$/, ''),
