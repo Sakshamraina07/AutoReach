@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "npm run build:shared && npm run build -w @autoreach/backend"
+  },
+  "deploy": {
+    "preDeployCommand": ["npm run db:migrate:prod -w @autoreach/backend"],
+    "startCommand": "npm run start -w @autoreach/backend",
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 120,
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

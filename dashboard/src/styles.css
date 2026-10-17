@@ -1,0 +1,127 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens are RGB triplets so Tailwind opacity modifiers work (bg-accent/10). */
+:root {
+  --bg: 23 25 28; /* #17191C charcoal */
+  --surface: 30 32 36; /* #1E2024 */
+  --raised: 38 41 46; /* #26292E */
+  --line: 50 54 60; /* #32363C */
+  --ink: 236 233 226; /* #ECE9E2 paper */
+  --muted: 167 163 154; /* #A7A39A */
+  --faint: 122 118 110; /* #7A766E */
+  /* Primary actions are ink on paper: no brand hue. Colour is kept for status. */
+  --accent: 236 233 226;
+  --accent-ink: 23 25 28;
+  --sent: 154 167 180; /* #9AA7B4 steel: delivered, nothing more */
+  --opened: 200 174 125; /* #C8AE7D sand, muted on purpose: an uncertain signal */
+  --replied: 108 197 154; /* #6CC59A */
+  --warn: 227 168 79; /* #E3A84F */
+  --danger: 226 112 106; /* #E2706A */
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: 245 245 244;
+  --surface: 255 255 255;
+  --raised: 239 238 236;
+  --line: 222 220 216;
+  --ink: 28 29 31;
+  --muted: 87 85 80;
+  --faint: 128 125 118;
+  --accent: 28 29 31;
+  --accent-ink: 255 255 255;
+  --sent: 74 95 117;
+  --opened: 140 108 52;
+  --replied: 30 132 88;
+  --warn: 168 104 12;
+  --danger: 190 58 50;
+  color-scheme: light;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg font-sans text-base text-ink antialiased;
+    font-feature-settings: 'tnum' 0;
+  }
+  ::selection {
+    @apply bg-ink/25;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-semibold tracking-tight;
+  }
+  a {
+    @apply text-ink underline decoration-faint/70 underline-offset-[3px] hover:decoration-ink;
+  }
+  /* Native checkboxes and radios follow the ink colour instead of the browser's blue. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: rgb(var(--ink));
+  }
+  /* Rows, cards and back-links are navigation, not prose: no underline. */
+  a.block,
+  a.flex,
+  a.inline-flex {
+    @apply no-underline;
+  }
+  /* Inline text actions ("Resume", "Preview") read as links. */
+  button.text-accent {
+    @apply text-ink underline decoration-faint/70 underline-offset-[3px] hover:decoration-ink;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded border border-line bg-bg px-2.5 py-1.5 text-sm text-ink placeholder:text-faint;
+    @apply focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+  .field:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+  .panel {
+    @apply rounded-md border border-line bg-surface;
+  }
+  .table {
+    @apply w-full border-collapse text-sm;
+  }
+  .table th {
+    @apply h-8 border-b border-line px-3 text-left text-xs font-medium text-muted;
+  }
+  .table td {
+    @apply h-9 border-b border-line/60 px-3 align-middle;
+  }
+  .table tbody tr:hover td {
+    @apply bg-raised/60;
+  }
+}

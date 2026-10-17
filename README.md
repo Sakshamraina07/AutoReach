@@ -1,78 +1,102 @@
-# AutoReach — Recruiter Cold Email Automation MVP
+# AutoReach 2.0
 
-AutoReach is a Chrome Extension and Node.js backend system designed for students to automate cold email outreach to recruiters. It features dynamic templates, background queues, rate-limiter logic, email open tracking, automated follow-ups, and resume attachments directly from Supabase Storage.
+A personal outreach workspace for an internship or first-job search: keep track of the
+recruiters you contact and the roles you're after, write role-specific emails from your own
+profile, send them from your own Gmail with your résumé attached, see replies, and get
+reminded when to follow up.
 
-## System Architecture
+![Overview](docs/screenshots/overview-dark.png)
 
-- **Extension:** React 18, Vite, CRXJS, TailwindCSS, Manifest V3.
-- **Backend:** Node.js, Express, `express-rate-limit`.
-- **Database & Auth & Storage:** Supabase (PostgreSQL).
-- **Email Delivery:** Resend API.
+*Screenshots show the real dashboard running locally with fictional demo data
+(`npm run seed:demo -w @autoreach/backend`); see [docs/screenshots](docs/screenshots).*
 
----
+## What it does
 
-## 🚀 Setup & Local Development Guide
+* **Paste a job, get the emails**: paste a job description and AutoReach reads it (what the
+  team cares about, quoted from the posting; must-have and nice-to-have skills; experience),
+  shows how your profile fits, and writes a separate email for each person you paste in.
+  Each email opens with one of the team's priorities and the project of yours that matches it.
+  You read it, edit if you like, and press **Send cold email**. It never applies to jobs and
+  never sends on its own.
+* **Recruiter CRM**: search, filter, tags, notes, CSV import/export, duplicate detection by
+  normalised email, merges that keep history, links to job opportunities.
+  ![Job page](docs/screenshots/job-page.png)
+* **Works with career-ops**: if you use [career-ops](https://github.com/career-ops-hq/career-ops) to
+  find and score jobs, AutoReach lists its scored jobs and turns any of them into a job page
+  with one click ([setup on Windows](docs/CAREER_OPS.md)). Greenhouse, Lever and Ashby links
+  can also fill in a job description for you.
+* **Find people with Hunter.io** (optional, your own free Hunter key): on a job page, list the
+  recruiters or engineering leads Hunter found at that company, with Hunter's confidence and
+  where it saw each address, and add the ones you pick. They're saved as unconfirmed, so the
+  first email to each asks you to check the address.
+* **Job tracker**: saved postings with skills, deadline and a status pipeline from
+  "saved" to "offer".
+* **Role-specific drafts**: from your verified profile, projects and the job posting, with AI
+  (Anthropic, OpenAI, Gemini, Groq or any OpenAI-compatible server) or from your templates.
+  A quality check flags wrong names or companies, invented facts, placeholders and repeat
+  outreach before you send.
+* **Sending you approve**: nothing goes out until you press Send or approve it for the queue.
+  Double submissions are blocked, résumés are verified before attaching, and failures are shown
+  as failures. Pause everything with one click.
+* **Honest status**: sent, open detected (optional and approximate) and replied are separate.
+  Replies, bounces and automatic replies are detected from Gmail message headers.
+* **Follow-up reminders** a few business days later, drafted in the same thread and cancelled
+  when someone replies.
+* **Chrome extension**: popup, side-panel composer, a Gmail card that shows whether you've
+  contacted someone, and "Add opportunity" from the page you're on.
+* **Your data**: export everything, delete your account, choose how long open signals are kept.
 
-### 1. Prerequisites
-- Node.js (v18+)
-- A [Supabase](https://supabase.com) Account (Free Tier)
-- A [Resend](https://resend.com) Account (Free Tier)
+## Repository
 
-### 2. Supabase Configuration
-Create a new Supabase project. Setup the following:
-1. **Authentication:** Enable Google OAuth in `Authentication -> Providers`.
-2. **Storage Bucket:** Create a public bucket named `resumes`.
-3. **Database Tables:** Execute the SQL schema found in the implementation plan to create `users`, `recruiters`, `email_templates`, and `email_history` tables.
+```
+packages/shared/    types, validation, status rules, quality checks (TypeScript)
+backend/            API + background jobs (Express 5, PostgreSQL via pg, TypeScript)
+dashboard/          web dashboard (React 19, Vite, Tailwind)
+extension/          Chrome extension, Manifest V3 (React, TypeScript)
+website/            marketing site and privacy policy (separate project)
+supabase/migrations SQL migrations, including the in-place upgrade of v1 data
+docs/               setup, deployment, architecture, audit, test results
+```
 
-### 3. Backend Setup
+## Quick start (local, no external accounts)
+
 ```bash
-cd backend
-npm install
+npm ci && npm run build:shared
+createdb autoreach
+cp backend/.env.example backend/.env      # set DATABASE_URL, STORAGE_DRIVER=local,
+                                          # ENABLE_DEV_LOGIN=true, DEV_JWT_SECRET, TOKEN_ENCRYPTION_KEY
+ALLOW_AUTH_SHIM=true npm run db:migrate
+npm run seed:demo -w @autoreach/backend   # optional fictional data
+npm run dev:api                           # http://localhost:3001
+VITE_DEV_LOGIN=true npm run dev:dashboard # http://localhost:5173
 ```
 
-Create a `.env` file in the `backend/` directory:
-```env
-PORT=3001
-API_URL=https://autoreach-pjez.onrender.com
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-RESEND_API_KEY=re_your_resend_api_key
-RESEND_FROM_EMAIL=onboarding@resend.dev
-```
+Full instructions: [docs/SETUP.md](docs/SETUP.md).
 
-Run the backend server (starts Express + Background workers):
+## Documentation
+
+| Topic | Document |
+|---|---|
+| Local setup | [docs/SETUP.md](docs/SETUP.md) |
+| Gmail and Google sign-in | [docs/GMAIL_OAUTH.md](docs/GMAIL_OAUTH.md) |
+| AI providers | [docs/AI_PROVIDERS.md](docs/AI_PROVIDERS.md) |
+| Chrome extension | [docs/EXTENSION.md](docs/EXTENSION.md) |
+| Deployment (Supabase, Railway, Vercel) and upgrading from v1 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) |
+| Troubleshooting and error codes | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
+| What changed from v1, deferred work, limitations | [docs/RELEASE_NOTES_2.0.md](docs/RELEASE_NOTES_2.0.md) |
+| Architecture and data model | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| v1 audit | [docs/REPOSITORY_AUDIT.md](docs/REPOSITORY_AUDIT.md) |
+| Tests and results | [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) |
+
+## Checks
+
 ```bash
-node server.js
+npm run check   # typecheck, lint, tests (incl. PostgreSQL integration tests), production builds
 ```
 
-### 4. Extension Setup
-```bash
-cd extension
-npm install
-```
+## Upgrading from v1
 
-Create a `.env` file in the `extension/` directory:
-```env
-VITE_API_URL=https://autoreach-pjez.onrender.com
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-```
-
-Build the extension:
-```bash
-npm run build
-```
-
-Then load the unpacked extension into Chrome:
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top right)
-3. Click **Load unpacked**
-4. Select the `extension/dist` folder.
-
-### 5. Start Sending
-1. Click the AutoReach extension icon to open the Side Panel.
-2. Sign in with Google.
-3. Complete your User Profile and upload your Resume on the **Setup** tab.
-4. Add or Import Recruiter contacts in the **DB** tab.
-5. Write your **Templates** (Initial and Followups).
-6. Head to the **Send** tab and click Start. The Node.js backend worker handles the queue.
+The migrations upgrade the v1 tables in place and keep every recruiter, email record,
+template and Gmail connection. **Back up the database first** and deploy the 2.0 API right
+after migrating: the v1 API doesn't work with the upgraded schema. Steps:
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

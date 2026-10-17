@@ -1,125 +1,128 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Download, Zap, Shield, Mail, MousePointer2, Settings, CheckCircle2, Github, Linkedin } from 'lucide-react';
+import { Download, Shield, Mail, Users, Sparkles, Paperclip, Bell, Github, Linkedin, LayoutDashboard } from 'lucide-react';
 import { Routes, Route, Link } from 'react-router-dom';
 import Privacy from './Privacy';
 
 const LOGO = '/logo.png?v=1.0.2';
 
+// Set these in the Vercel project (Settings → Environment Variables) once the
+// dashboard is deployed and a 2.0 extension release is published.
+const REPO = 'https://github.com/Sakshamraina07/AutoReach';
+const EXTENSION_URL = import.meta.env.VITE_EXTENSION_URL || `${REPO}/blob/main/docs/EXTENSION.md`;
+const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || '';
+
 const Home = () => {
   const features = [
     {
-      icon: <Zap size={24} />,
-      title: "Intelligent Queueing",
-      description: "Send emails with human-like delays (30-90s) to maintain high deliverability and avoid spam filters."
+      icon: <Users size={24} />,
+      title: "Recruiter CRM",
+      description: "Every recruiter you contact in one place, with the role, every email you sent and what came back. Duplicates are caught by email address before you send twice."
     },
     {
-      icon: <Shield size={24} />,
-      title: "Gmail OAuth Security",
-      description: "Secure, professional-grade OAuth 2.0 connection. No more shared passwords, just pure, direct integration."
+      icon: <Sparkles size={24} />,
+      title: "Role-specific drafts",
+      description: "Drafts are written from your saved profile, projects and the job posting. Anything not in your profile is flagged, and you edit every word before it goes out."
+    },
+    {
+      icon: <Paperclip size={24} />,
+      title: "Your résumé, attached",
+      description: "Keep several labelled résumés. The one you pick is checked and attached as a real PDF, not a link, and sending stops if the file is missing."
     },
     {
       icon: <Mail size={24} />,
-      title: "Automated Follow-ups",
-      description: "Smart follow-ups that stop automatically when someone replies. Set your drip and let it run."
+      title: "Sent from your Gmail",
+      description: "Emails go out from your own address and appear in your Sent folder. Nothing is sent until you press Send, and you can pause everything at once."
     },
     {
-      icon: <MousePointer2 size={24} />,
-      title: "One-Click Import",
-      description: "Bulk import HR contacts via CSV with intelligent domain filtering and duplicate prevention."
+      icon: <Bell size={24} />,
+      title: "Replies and follow-ups",
+      description: "Replies are detected in your Gmail threads and cancel pending reminders. Follow-up reminders come a few business days later, ready to draft in the same thread."
     },
     {
-      icon: <CheckCircle2 size={24} />,
-      title: "Open Tracking",
-      description: "Real-time analytics on who opened your emails, helping you focus on the most interested leads."
-    },
-    {
-      icon: <Settings size={24} />,
-      title: "Smart Warmups",
-      description: "Automated daily warmup limits that gradually increase to protect your sender reputation."
+      icon: <Shield size={24} />,
+      title: "Honest tracking",
+      description: "Sent, opened and replied are kept separate. Open tracking is optional and off by default, and opens are shown as approximate signals, never as proof someone read your email."
     }
   ];
 
   const steps = [
     {
       number: "01",
-      title: "Secure Authentication",
-      description: "Connect your Gmail account via Google OAuth 2.0. No passwords shared, just a secure, direct link to your inbox."
+      title: "Set up your profile",
+      description: "Sign in with Google, add your education, skills and projects (or let AutoReach suggest them from your résumé for you to confirm), and upload your résumé PDFs."
     },
     {
       number: "02",
-      title: "Import Your Lead List",
-      description: "Upload your CSV of recruiters or HR contacts. Our engine automatically filters invalid domains and duplicates."
+      title: "Connect Gmail",
+      description: "Allow AutoReach to send email for you and to read message headers so it can spot replies. It never reads the content of your emails."
     },
     {
       number: "03",
-      title: "Craft Your Template",
-      description: "Set up your personalized outreach message with dynamic tags like {name} and {company} for a personal touch."
+      title: "Add recruiters and roles",
+      description: "Add recruiters by hand, from a CSV, or from a job page with the Chrome extension. Link them to the opportunities you're applying for."
     },
     {
       number: "04",
-      title: "Automate with Precision",
-      description: "Launch the engine. Human-like delays (30-90s) and daily limits ensure your emails land in the primary inbox."
+      title: "Review, send, follow up",
+      description: "Generate a draft, check it, and send it with your résumé attached. AutoReach reminds you when a follow-up is due and stops when someone replies."
     }
   ];
 
-  const SmartConsole = () => (
-    <div className="console-wrapper">
+  const ExamplePanel = () => (
+    <div className="console-wrapper" aria-label="Example of the AutoReach outreach list (fictional data)">
       <div className="console-header">
         <div className="dots">
           <span></span><span></span><span></span>
         </div>
-        <div className="console-title">AutoReach Engine v3.0.0</div>
+        <div className="console-title">Example outreach list (fictional data)</div>
       </div>
       <div className="console-content">
         <div className="console-grid">
           <div className="stat-card">
-            <span className="stat-label">DAILY_OUTREACH</span>
-            <div className="stat-value">18 <span className="stat-unit">/ 50</span></div>
+            <span className="stat-label">Sent today</span>
+            <div className="stat-value">4 <span className="stat-unit">of 20</span></div>
             <div className="stat-progress">
-              <motion.div 
+              <motion.div
                 className="progress-bar"
                 initial={{ width: 0 }}
-                animate={{ width: '36%' }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
+                animate={{ width: '20%' }}
+                transition={{ duration: 1.2, ease: "easeOut" }}
               />
             </div>
           </div>
           <div className="stat-card accent">
-            <span className="stat-label">ENGINE_STATUS</span>
-            <div className="status-indicator">
-              <span className="pulse-dot"></span>
-              ACTIVE
-            </div>
-            <div className="stat-subtext">Precision Delays: 30-90s</div>
+            <span className="stat-label">Follow-ups due</span>
+            <div className="stat-value">2</div>
+            <div className="stat-subtext">Reminders, not automatic emails</div>
           </div>
         </div>
-        
+
         <div className="activity-feed">
-          <div className="feed-header">RECENT_LOGS</div>
+          <div className="feed-header">Recent outreach</div>
           <div className="log-entries">
-            <div className="log-entry">
-              <span className="log-time">[01:52:10]</span>
-              <span className="log-msg">GMAIL_SYNC: Connected as sakshamraina16@gmail.com</span>
-            </div>
-            <div className="log-entry">
-              <span className="log-time">[01:54:33]</span>
-              <span className="log-msg">QUEUE: Initializing follow-up sequence [SET_1]</span>
-            </div>
             <div className="log-entry success">
-              <span className="log-time">[01:58:12]</span>
-              <span className="log-msg">SUCCESS: Outreach sent to gsrprasad@7hillsbiz.com</span>
+              <span className="log-time">Replied</span>
+              <span className="log-msg">Meera Iyer, Contoso: Frontend Developer Intern</span>
             </div>
             <div className="log-entry">
-              <span className="log-time">[02:01:05]</span>
-              <span className="log-msg">WAITING: Human-like delay (42s) remaining...</span>
+              <span className="log-time">Open detected</span>
+              <span className="log-msg">Daniel Okafor, Fabrikam: Full-Stack Developer Intern</span>
+            </div>
+            <div className="log-entry">
+              <span className="log-time">Sent</span>
+              <span className="log-msg">Priya Nair, Northwind Traders: Software Engineer Intern</span>
+            </div>
+            <div className="log-entry">
+              <span className="log-time">Draft</span>
+              <span className="log-msg">Hana Sato, Wingtip Toys: UI Engineering Intern</span>
             </div>
           </div>
         </div>
 
         <div className="console-footer">
-          <div className="footer-tag">SECURE_OAUTH_2.0</div>
-          <div className="footer-tag">SUPABASE_DB_SYNC</div>
+          <div className="footer-tag">Sent from your Gmail</div>
+          <div className="footer-tag">Opens are approximate</div>
         </div>
       </div>
     </div>
@@ -155,19 +158,25 @@ const Home = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <span className="badge">New: Gmail OAuth 2.0 Integrated</span>
-              <h1>Cold Emailing <br /> <span className="highlight">Reimagined.</span></h1>
+              <span className="badge">AutoReach 2.0</span>
+              <h1>Recruiter outreach, <br /> <span className="highlight">kept honest.</span></h1>
               <p className="subtitle">
-                The ultimate Chrome extension for recruiters and job seekers. Automate your outreach with human-like intelligence and direct Gmail integration.
+                A recruiter CRM, role-specific email drafts and follow-up reminders for your internship or first-job search. Emails go out from your own Gmail, only when you approve them.
               </p>
               
               <div className="cta-group">
-                <a href="/AutoReach_v3.9_Local.zip" download className="btn btn-primary">
+                {DASHBOARD_URL && (
+                  <a href={DASHBOARD_URL} className="btn btn-primary">
+                    <LayoutDashboard size={20} />
+                    Open the dashboard
+                  </a>
+                )}
+                <a href={EXTENSION_URL} className={DASHBOARD_URL ? 'btn btn-secondary' : 'btn btn-primary'} target="_blank" rel="noreferrer">
                   <Download size={20} />
-                  Download Extension
+                  Get the Chrome extension
                 </a>
                 <a href="#features" className="btn btn-secondary">
-                  Learn More
+                  Learn more
                 </a>
               </div>
 
@@ -178,7 +187,7 @@ const Home = () => {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                <SmartConsole />
+                <ExamplePanel />
               </motion.div>
 
               <motion.div 
@@ -208,8 +217,8 @@ const Home = () => {
         <section id="features" className="features">
           <div className="container">
             <div className="section-head">
-              <h2>Engineered for Deliverability</h2>
-              <p className="subtitle">Powerful features that give you the edge in cold outreach without getting flagged.</p>
+              <h2>What AutoReach does</h2>
+              <p className="subtitle">Everything you need to reach recruiters personally, keep track of every conversation and know when to follow up.</p>
             </div>
             
             <div className="grid">
@@ -237,7 +246,7 @@ const Home = () => {
           <div className="container">
             <div className="section-head">
               <h2>How AutoReach Works</h2>
-              <p className="subtitle">From connection to connection. A seamless flow designed for high-impact outreach.</p>
+              <p className="subtitle">Four steps from sign-in to your first reply.</p>
             </div>
 
             <div className="steps-container">
@@ -290,8 +299,8 @@ const Home = () => {
                 <span className="built-by-label">Built By</span>
                 <h2>Saksham Raina</h2>
                 <p className="founder-bio">
-                  Saksham Raina is a developer focused on automation, AI systems, and building intelligent productivity tools. 
-                  AutoReach was built to eliminate friction from outreach using precision engineering and AI logic.
+                  Saksham Raina is a developer focused on automation, AI systems, and productivity tools.
+                  AutoReach started as his own way to keep track of recruiter outreach during an internship search.
                 </p>
                 <div className="founder-socials">
                   <a href="https://github.com/Sakshamraina07" target="_blank" rel="noreferrer" className="social-icon">
@@ -309,11 +318,11 @@ const Home = () => {
         <section className="cta-final" style={{ padding: '8rem 0', textAlign: 'center' }}>
           <div className="container">
             <div style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(16, 185, 129, 0.1))', padding: '4rem', borderRadius: '32px', border: '1px solid var(--border-color)' }}>
-              <h2>Ready to scale your outreach?</h2>
-              <p className="subtitle" style={{ marginBottom: '2.5rem' }}>Download the extension and start connecting with recruiters today.</p>
-              <a href="/AutoReach_v3.9_Local.zip" download className="btn btn-primary" style={{ margin: '0 auto', width: 'fit-content' }}>
+              <h2>Start your outreach list</h2>
+              <p className="subtitle" style={{ marginBottom: '2.5rem' }}>Set up your profile once, then write to each recruiter about the role you actually want.</p>
+              <a href={DASHBOARD_URL || EXTENSION_URL} className="btn btn-primary" style={{ margin: '0 auto', width: 'fit-content' }}>
                 <Download size={20} />
-                Get AutoReach Now
+                {DASHBOARD_URL ? 'Open AutoReach' : 'Set up AutoReach'}
               </a>
             </div>
           </div>
@@ -322,7 +331,7 @@ const Home = () => {
 
       <footer>
         <div className="container">
-          <p>© 2026 AutoReach. Built for precision outreach.</p>
+          <p>© 2026 AutoReach.</p>
           <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'center', gap: '2rem' }}>
             <Link to="/privacy" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.9rem' }}>Privacy Policy</Link>
           </div>

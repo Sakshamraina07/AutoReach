@@ -1,22 +1,37 @@
 {
-  "name": "autoreachout",
-  "version": "1.0.0",
+  "name": "autoreach",
+  "private": true,
+  "version": "2.0.0",
+  "description": "AutoReach 2.0 \u2014 personal AI job-outreach workspace: recruiter CRM, opportunity tracker, AI-assisted Gmail outreach, reply detection and follow-ups.",
   "type": "module",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
+  "workspaces": [
+    "packages/shared",
+    "backend",
+    "dashboard",
+    "extension"
+  ],
+  "engines": {
+    "node": ">=22.13"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "nodemailer": "^8.0.2",
-    "express": "^4.18.2",
-    "cors": "^2.8.5",
-    "dotenv": "^17.3.1",
-    "@supabase/supabase-js": "^2.39.0",
-    "multer": "^1.4.5-lts.1",
-    "csv-parse": "^5.5.3"
+  "scripts": {
+    "build:shared": "npm run build -w @autoreach/shared",
+    "build": "npm run build:shared && npm run build -w @autoreach/backend && npm run build -w @autoreach/dashboard && npm run build -w @autoreach/extension",
+    "typecheck": "npm run build:shared && npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "test": "npm run build:shared && npm run test --workspaces --if-present",
+    "dev:api": "npm run dev -w @autoreach/backend",
+    "dev:dashboard": "npm run dev -w @autoreach/dashboard",
+    "dev:extension": "npm run build:dev -w @autoreach/extension",
+    "db:migrate": "npm run db:migrate -w @autoreach/backend",
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "globals": "^17.4.0",
+    "jsdom": "^29.1.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2"
   }
 }
