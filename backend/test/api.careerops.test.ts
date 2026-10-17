@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jobDescriptionFromReport, parseReportHeader, trackerStatuses } from '../src/services/careerOps.js';
+import { loadConfig } from '../src/config.js';
+import { captureBelongsTo, careerOpsAllowed, jobDescriptionFromReport, parseReportHeader, trackerStatuses } from '../src/services/careerOps.js';
 import { createTestEnv, PROFILE, type TestEnv } from './helpers/app.js';
 
 /* A made-up career-ops folder: reports in its own format, one saved capture and a tracker. */
@@ -76,6 +77,17 @@ beforeAll(async () => {
     path.join(dir, 'reports', '004-tailspin-2026-10-16.md'),
     report({ company: 'Tailspin', role: 'SDE Intern', score: '2.5/5', url: 'https://careers.tailspin.example/jobs/9', body: '## Job Description\n\nSign in to view this job · Join LinkedIn to see who you know at Tailspin' }),
   );
+  // 005: a capture with this number but another company's name must not be used.
+  await fs.writeFile(
+    path.join(dir, 'reports', '005-initech-2026-10-16.md'),
+    report({ company: 'Initech', role: 'Backend Intern', score: '4.0/5', url: '(pasted)', body: '## Job Description\n\nSee jds/005-initech-backend.md for the full archive (archive-posting.mjs --report=5).' }),
+  );
+  await fs.writeFile(path.join(dir, 'jds', '5-2026-01-02_globex_platform.md'), JD.replace(/Northwind Labs/g, 'Globex'));
+  // 006: written by career-ops' Gemini script, so its "verbatim" section is the model's retyping.
+  await fs.writeFile(
+    path.join(dir, 'reports', '006-umbrella-2026-10-17.md'),
+    `\uFEFF${report({ company: 'Umbrella', role: 'Backend Intern', score: '4.3/5', url: '(pasted)', body: `## Job Description (archived verbatim)\n\n${JD.replace(/Northwind Labs/g, 'Umbrella')}` }).replace('**PDF:** pending', '**PDF:** pending\n**Tool:** Gemini (gemini-3.6-flash)')}`,
+  );
   await fs.writeFile(path.join(dir, 'reports', 'notes.md'), 'not a report');
   await fs.writeFile(
     path.join(dir, 'data', 'applications.md'),
@@ -124,9 +136,47 @@ describe('reading career-ops files', () => {
   });
 
   it("reads statuses from the tracker by report link, not by the tracker's own numbering", () => {
-    const s = trackerStatuses('| # | Company | Status | Report |\n|---|---|---|---|\n| 7 | A | Applied | [012](reports/012-a-2026-01-01.md) |');
+    const s = trackerStatuses(
+      '| Stage | Status |\n|---|---|\n| x | Done |\n\n| # | Company | Status | Report |\n|---|---|---|---|\n| 7 | A | Applied | [012](reports/012-a-2026-01-01.md), [019](reports/019-a-2026-02-01.md) |',
+    );
     expect(s.get(12)).toBe('Applied');
+    expect(s.get(19)).toBe('Applied');
     expect(s.get(7)).toBeUndefined();
+  });
+
+  it('reads headers in other languages, with a byte-order mark, and companies with hyphens', () => {
+    expect(parseReportHeader('\uFEFF# Evaluación: Foo - Bar Labs — Ingeniero Backend\n\n**Fecha:** 2026-10-01\n**Puntuación:** 4,1/5\n**URL:** https://jobs.lever.co/foo/1')).toMatchObject({
+      company: 'Foo - Bar Labs',
+      role: 'Ingeniero Backend',
+      date: '2026-10-01',
+      score: 4.1,
+      url: 'https://jobs.lever.co/foo/1',
+    });
+    expect(parseReportHeader('# Évaluation : Acme -- Dev\n**Score :** 3.9/5')).toMatchObject({ company: 'Acme', role: 'Dev', score: 3.9 });
+  });
+
+  it("matches a jds/ capture by number and company, as career-ops does", () => {
+    expect(captureBelongsTo('002-2026-10-15_contoso_platform-intern.pdf', 2, 'contoso')).toBe(true);
+    expect(captureBelongsTo('2-contoso-platform.md', 2, 'contoso')).toBe(true);
+    expect(captureBelongsTo('2-2026-01-02_globex_platform.md', 2, 'contoso')).toBe(false);
+    expect(captureBelongsTo('20-contoso-x.md', 2, 'contoso')).toBe(false);
+    expect(captureBelongsTo('2-contosoplus-x.md', 2, 'contoso')).toBe(false);
+  });
+
+  it('never takes a stub, or a disclosed summary, as the description', () => {
+    expect(jobDescriptionFromReport('## Job Description\n\nBackend intern, Node.js and SQL, Bengaluru, apply now please.')).toBeNull(); // under 80 characters
+    expect(jobDescriptionFromReport(`## Job Description\n\nThis is a summary of the posting, not a verbatim copy. ${JD}`)).toBeNull();
+    expect(jobDescriptionFromReport(`## Job Description\n\nThe fetch tool could not reproduce the posting verbatim. Key points: ${JD}`)).toBeNull();
+    expect(jobDescriptionFromReport(`## Job Description (summary)\n\n${JD}`)).toBeNull();
+  });
+
+  it('serves the folder only to requests from this computer outside production', () => {
+    const c = loadConfig({ DATABASE_URL: 'postgres://u@localhost/db', SUPABASE_URL: 'https://x.supabase.co', SUPABASE_ANON_KEY: 'a', CAREER_OPS_DIR: '/tmp/co' });
+    expect(careerOpsAllowed(c, { email: 'a@b.dev', remoteAddress: '127.0.0.1' })).toBe(true);
+    expect(careerOpsAllowed(c, { email: 'a@b.dev', remoteAddress: '::ffff:127.0.0.1' })).toBe(true);
+    expect(careerOpsAllowed(c, { email: 'a@b.dev', remoteAddress: '::1' })).toBe(true);
+    expect(careerOpsAllowed(c, { email: 'a@b.dev', remoteAddress: '192.168.1.23' })).toBe(false);
+    expect(careerOpsAllowed(c, { email: 'a@b.dev', remoteAddress: undefined })).toBe(false);
   });
 });
 
@@ -137,12 +187,14 @@ describe('career-ops in AutoReach', () => {
     const r = (await env.api(user.token).get('/api/career-ops').expect(200)).body;
     expect(r.cv_exists).toBe(false);
     expect(r.unreadable).toEqual([]);
-    expect(r.jobs.map((j: { report_number: number }) => j.report_number)).toEqual([4, 3, 2, 1]);
+    expect(r.jobs.map((j: { report_number: number }) => j.report_number)).toEqual([6, 5, 4, 3, 2, 1]);
     const by = (n: number) => r.jobs.find((j: { report_number: number }) => j.report_number === n);
     expect(by(1)).toMatchObject({ company: 'Northwind Labs', role: 'Software Engineer Intern - Backend', score: 4.5, status: 'Evaluated', description: 'report', opportunity_id: null });
     expect(by(2)).toMatchObject({ company: 'Contoso', url: null, description: 'saved' });
     expect(by(3)).toMatchObject({ score: 3.8, description: 'link', url: GH_URL });
     expect(by(4)).toMatchObject({ status: 'SKIP', description: 'none' });
+    expect(by(5)).toMatchObject({ company: 'Initech', description: 'none' }); // the jds/5-… file is Globex's
+    expect(by(6)).toMatchObject({ company: 'Umbrella', score: 4.3, description: 'none' }); // BOM read; script-written section not trusted
   });
 
   it('imports a job from its archived description, once', async () => {
@@ -170,6 +222,8 @@ describe('career-ops in AutoReach', () => {
     expect(r.body.error.code).toBe('CAREER_OPS_NO_DESCRIPTION');
     expect(r.body.error.details).toEqual({ url: 'https://careers.tailspin.example/jobs/9' });
     await env.api(user.token).post('/api/career-ops/reports/99/import').expect(404);
+    expect((await env.api(user.token).post('/api/career-ops/reports/5/import').expect(422)).body.error.code).toBe('CAREER_OPS_NO_DESCRIPTION');
+    expect((await env.api(user.token).post('/api/career-ops/reports/6/import').expect(422)).body.error.code).toBe('CAREER_OPS_NO_DESCRIPTION');
   });
 
   it('builds cv.md from the profile and writes it only if career-ops has none', async () => {

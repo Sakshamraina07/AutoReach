@@ -158,7 +158,10 @@ export async function fetchJobFromBoard(fetchImpl: FetchLike, link: string, time
     const u = str(j.jobUrl);
     if (!u) return false;
     try {
-      return new URL(u).pathname.split('/').filter(Boolean).includes(target.jobId);
+      // The job id is the posting's own segment: /{board}/{jobId}. Matching anywhere in the
+      // path would let /{board}/{board} match every job on that board.
+      const segs = new URL(u).pathname.split('/').filter(Boolean).filter((x) => x !== 'application');
+      return segs.length >= 2 && segs[segs.length - 1] === target.jobId;
     } catch {
       return false;
     }

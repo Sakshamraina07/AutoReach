@@ -13,16 +13,16 @@ npm run check   # typecheck → lint → tests → production builds
 ```
 
 Result: **exit code 0**: TypeScript type checks for all four workspaces, ESLint with no
-errors or warnings, **209 of 209 tests passed**, and the production builds of the API,
+errors or warnings, **232 of 232 tests passed**, and the production builds of the API,
 dashboard and extension completed with no warnings.
 
 | Workspace | Test files | Tests | What they run against |
 |---|---|---|---|
-| `packages/shared` | 2 | 42 | Pure functions (validation, status rules, quality checks, templates, dates, job-description reading, fit, pasted contacts) |
-| `backend` | 7 | 116 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
-| `dashboard` | 3 | 17 | React components in jsdom (Testing Library) |
+| `packages/shared` | 2 | 44 | Pure functions (validation, status rules, quality checks, templates, dates, job-description reading, fit, pasted contacts) |
+| `backend` | 8 | 135 | The Express app over HTTP (supertest) and a **real PostgreSQL 16** started by the test harness; Google and AI calls go through recorded fake transports |
+| `dashboard` | 4 | 19 | React components in jsdom (Testing Library) |
 | `extension` | 7 | 34 | Service-worker modules, the Gmail content script and the build's manifest, in jsdom with a stubbed `chrome` API |
-| **Total** | **19** | **209** | |
+| **Total** | **21** | **232** | |
 
 Each backend test file gets its own fresh database; the migrations run from scratch, including
 a reconstruction of the v1 schema, so the migration tests start from v1-shaped data.
@@ -42,6 +42,9 @@ Some of the new tests were run against deliberately broken code to make sure the
 * With the job page's email card put back to its first version, the two dashboard tests
   "after a failed rewrite, shows the version the server has" and "coming back to the job shows
   the saved edit" failed: the card showed an older text than the one the server would send.
+* With the company check removed from `captureBelongsTo` (so a `jds/` file is matched by
+  report number alone), three career-ops tests failed: another company's saved posting was
+  offered and imported as the job's description.
 * With the Gmail card's backoff removed, the two backoff tests failed (the card asked the
   API again on every Gmail re-render).
 
@@ -58,6 +61,7 @@ access from the sandbox), so no email was actually sent.
 |---|---|
 | **Fresh database** | Migrations applied 3 of 3 on an empty database; a second run applied none. The new `20261018000000_job_analysis.sql` then applied on the existing local database (1 applied, 3 already applied) |
 | **Paste a job → emails** (API with `AI_PROVIDER=gemini`, `AI_MODEL=gemini-3.8-flash`, `AI_BASE_URL` pointing at a local stand-in that answers in Gemini's `generateContent` format; **not** Google) | **New job** → pasted a fictional posting → **Read job description** saved it and opened the job page: "Strong fit", both priorities with their quotes, must-have skills ticked, "Read by gemini-3.8-flash". The request reached `/v1beta/models/gemini-3.8-flash:generateContent` with the `x-goog-api-key` header and `thinkingConfig: {thinkingLevel: "low"}`. Pasting two people and a line without an address showed "Added 2 people. Skipped 1 line…"; both emails were written one after the other without a click; the recruiter's prompt had the `job:priorities` fact and no referral instruction; the engineering manager's prompt had the referral instruction and the first email's opening under "Start the body differently". With Google client settings but no connected Gmail, each card said "Connect your Gmail account to send. This draft is saved." and **Send cold email** was disabled. An edit was saved and was still there after a reload, and reloading wrote no new emails. **Write again** wrote a new version whose prompt avoided the old opening. At 390 px wide there was no horizontal scrolling. The Jobs list row opened the job page. No console errors |
+| **career-ops on the same computer** (a clone of career-ops 1.37.0 with `npm install`; its `doctor` ran; reports written in the formats of its `modes/oferta.md` template and its Gemini scripts, its own `examples/sample-report.md`, a PDF capture in `jds/` and a tracker; career-ops' `check-jd-archive.mjs --summary` agreed on which reports carry a description) | **From career-ops** appeared in the sidebar; jobs listed best first (4.6, 4.2, 4.2) with the 2.9 / SKIP one hidden until **Show all**; **Create cv.md in career-ops** wrote `cv.md` starting with the profile's name, and the card then said it already exists. **Write emails** on the report with an archived description opened its job page with "career-ops score 4.6/5" and the team's priorities; back on the list the row showed **Open job**. **Write emails** on the report whose description was only in a PDF capture opened a job page with Contoso's text. The report without a description led to New job with its link filled in; **Get description** on that non-board link explained which boards work (the only console error was that expected 422). Job boards themselves were not reachable from the sandbox; their API format is covered by tests with recorded responses |
 | **Onboarding** for a new user | Three steps (Your résumé, Check your details, Connect Gmail); **Finish without Gmail** led to **New job** |
 | **Recruiter CRM** | Added a recruiter; adding `PAT.LEE@…` for an existing `pat.lee@…` showed "already saved as Pat Lee" with **Open existing recruiter**, and nothing was saved (the only console error was that 409 response) |
 | **Composer** | Template draft filled from the profile; the send dialog showed "Gmail sending isn't set up on this server yet…" and the Send button was disabled |
@@ -85,6 +89,9 @@ access from the sandbox), so no email was actually sent.
   fake provider, and Gemini's request and response format with a local stand-in. How well a
   real model reads job descriptions and writes the emails has not been checked here; read
   every email before you send it.
+* **career-ops' own runs** (`npm run scan`, its Gemini scripts) and **live Greenhouse, Lever and
+  Ashby APIs**: no access from the sandbox. The report formats come from career-ops' source and
+  templates; the board API shapes from their public documentation.
 * **Sending from the job page through real Gmail**: the send endpoint it uses is covered by the
   backend tests (including one that sends a job-page draft through the fake Gmail), not by a
   real mailbox.
@@ -128,6 +135,27 @@ Generated from the test runner's JSON output for the run above.
 - what the AI may not add › always returns something that can be saved
 - skills the candidate has › doesn't count a skill that only appears in a project's description
 
+### `packages/shared/src/jobs.test.ts` (18)
+
+- job description analysis without AI › pulls out the role, company, location, skills and experience
+- checking an AI analysis against the job description › keeps what the JD supports and drops what it does not
+- checking an AI analysis against the job description › falls back to the plain analysis when the AI returns nothing usable
+- the candidate's fit › counts matches and names the projects that show them
+- the candidate's fit › names only the alternative the candidate actually has
+- the candidate's fit › is honest about experience gaps and senior roles
+- pasted recruiter contacts › reads the common formats people paste
+- pasted recruiter contacts › reads a CSV with an email column, including quoted commas
+- pasted recruiter contacts › never turns a pasted string into a different address
+- what the AI may not add › drops invented priorities: one-word quotes and points with facts the JD never states
+- what the AI may not add › only keeps a company or role the JD names, as whole words
+- what the AI may not add › keeps a deadline only when the JD writes it, and never an impossible date
+- what the AI may not add › reads the minimum of a range, and takes the experience line only as quoted
+- what the AI may not add › ignores English words that only look like skills, and treats a bare slash as "both"
+- what the AI may not add › always returns something that can be saved
+- skills the candidate has › doesn't count a skill that only appears in a project's description
+- priorities in the AI’s own words › keeps a fair paraphrase backed by a quote
+- priorities in the AI’s own words › drops a point that only shares a word or two with the JD
+
 ### `packages/shared/src/shared.test.ts` (26)
 
 - email helpers › normalizes case and whitespace only
@@ -166,6 +194,24 @@ Generated from the test runner's JSON output for the run above.
 - AI drafting › can be bypassed to use the template composer
 - AI drafting › refuses to draft for another user’s recruiter
 - without an AI provider › builds a role-aware template draft from verified profile facts
+
+### `backend/test/api.careerops.test.ts` (15)
+
+- reading career-ops files › reads the report header career-ops writes
+- reading career-ops files › takes only a verbatim description, never a placeholder, pointer, sign-in wall or paraphrase
+- reading career-ops files › reads statuses from the tracker by report link, not by the tracker's own numbering
+- reading career-ops files › reads headers in other languages, with a byte-order mark, and companies with hyphens
+- reading career-ops files › matches a jds/ capture by number and company, as career-ops does
+- reading career-ops files › never takes a stub, or a disclosed summary, as the description
+- reading career-ops files › serves the folder only to requests from this computer outside production
+- career-ops in AutoReach › lists the evaluations with where each description would come from
+- career-ops in AutoReach › imports a job from its archived description, once
+- career-ops in AutoReach › imports from a saved capture and from the posting link
+- career-ops in AutoReach › says so when there's no description to read
+- career-ops in AutoReach › builds cv.md from the profile and writes it only if career-ops has none
+- career-ops in AutoReach › is only for the folder owner when an owner is set
+- career-ops in AutoReach › reads a job link from Greenhouse, Lever or Ashby, and refuses other sites
+- without a career-ops folder › doesn't offer it
 
 ### `backend/test/api.crm.test.ts` (14)
 
@@ -270,7 +316,7 @@ Generated from the test runner's JSON output for the run above.
 - migration on the production v1 schema › closes the older users table to the public API roles
 - migration on the production v1 schema › imports v1 Gmail tokens, skipping rows without a live account
 
-### `backend/test/unit.test.ts` (21)
+### `backend/test/unit.test.ts` (25)
 
 - crypto › round-trips with AES-256-GCM and detects tampering
 - crypto › computes RFC 7636 S256 challenges
@@ -283,6 +329,10 @@ Generated from the test runner's JSON output for the run above.
 - Gemini provider › uses a thinking budget for Gemini 2.5 and nothing for older models
 - Gemini provider › reports an empty answer (e.g. the limit was spent thinking) as a provider error
 - Gemini provider › passes on rate limiting as a 429
+- reading a posting from its job board › only knows the three boards, and only their posting links
+- reading a posting from its job board › turns board HTML (Greenhouse's arrives entity-encoded) into readable text
+- reading a posting from its job board › reads Greenhouse, Lever and Ashby postings
+- reading a posting from its job board › reports a closed or empty posting as not found
 - résumé heuristics › extracts only what is present
 - résumé heuristics › separates the college from the degree and dates
 - configuration › fails fast with actionable messages
@@ -293,6 +343,11 @@ Generated from the test runner's JSON output for the run above.
 - résumé storage ownership › accepts only the user’s own 2.0 and v1 object keys
 - EXTENSION_IDS › accepts Chrome extension IDs and rejects anything else
 - blank .env lines › treat KEY= as "not set" and fall back to the defaults
+
+### `dashboard/src/test/careerOps.test.tsx` (2)
+
+- career-ops page › shows the good jobs best first and hides low scores and skipped ones until asked
+- career-ops page › offers the right next step for each job
 
 ### `dashboard/src/test/components.test.tsx` (8)
 

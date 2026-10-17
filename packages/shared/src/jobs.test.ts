@@ -259,4 +259,23 @@ describe('priorities in the AI’s own words', () => {
     );
     expect(a.priorities.map((p) => p.point)).toEqual(['Fast, well-tested database work']);
   });
+
+  it('drops a point that only shares a word or two with the JD', () => {
+    const base = heuristicJobAnalysis(JD);
+    const quote = 'Write tests and help keep our PostgreSQL queries fast';
+    const a = sanitizeJobAnalysis(
+      {
+        title: 'Software Engineer Intern - Backend',
+        must_have: ['Node.js'],
+        priorities: [
+          { point: 'Fast-growing, well-funded startup offering equity to interns', evidence: quote },
+          { point: 'Write tests with guaranteed return offer', evidence: quote },
+        ],
+      },
+      JD,
+      base,
+      'm',
+    );
+    expect(a.priorities).toEqual([]);
+  });
 });

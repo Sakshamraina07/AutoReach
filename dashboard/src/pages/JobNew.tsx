@@ -22,6 +22,7 @@ export default function JobNew() {
   const [url, setUrl] = useState(() => params.get('url') ?? '');
   const [fetching, setFetching] = useState(false);
   const [fetchedFrom, setFetchedFrom] = useState<string | null>(null);
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [busy, setBusy] = useState<'reading' | 'saving' | null>(null);
   const [error, setError] = useState<unknown>(null);
   // Shown only when the posting doesn't say which company or role it is.
@@ -47,11 +48,11 @@ export default function JobNew() {
     setBusy('reading');
     try {
       const result = await api<JobAnalysisResult>('/api/jobs/analyze', { method: 'POST', body: { text } });
-      const company = result.analysis.company ?? hints.company;
-      const title = result.analysis.title ?? hints.role;
+      const { company, title } = result.analysis;
       if (company && title) await save(result, company, title);
       else {
-        setMissing({ result, company, title });
+        // Names passed in the link (from career-ops) are suggestions to confirm, not facts.
+        setMissing({ result, company: company ?? hints.company, title: title ?? hints.role });
         setBusy(null);
       }
     } catch (e) {
@@ -61,8 +62,13 @@ export default function JobNew() {
   }
 
   /** Greenhouse, Lever and Ashby publish their postings' text; read it instead of copying. */
-  async function fetchFromLink() {
+  async function fetchFromLink(replace = false) {
     if (!cleanUrl) return;
+    if (text.trim() && !replace) {
+      setConfirmReplace(true);
+      return;
+    }
+    setConfirmReplace(false);
     setError(null);
     setFetching(true);
     try {
@@ -104,11 +110,22 @@ export default function JobNew() {
         >
           <div className="flex gap-2">
             <input id="jd-url" type="url" className="field" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" disabled={!!busy || fetching} />
-            <Button onClick={fetchFromLink} loading={fetching} disabled={!cleanUrl || !!busy}>
+            <Button onClick={() => void fetchFromLink()} loading={fetching} disabled={!cleanUrl || !!busy}>
               Get description
             </Button>
           </div>
         </Field>
+        {confirmReplace && (
+          <div className="flex flex-wrap items-center gap-2 rounded border border-warn/40 bg-warn/5 p-3 text-sm" role="alert">
+            <span className="flex-1">This replaces the description you already pasted.</span>
+            <Button size="sm" variant="primary" onClick={() => void fetchFromLink(true)}>
+              Replace it
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirmReplace(false)}>
+              Keep mine
+            </Button>
+          </div>
+        )}
         <Field label="Job description" htmlFor="jd-text" hint={
             tooShort && text
               ? `Paste the full description (${text.trim().length} of at least ${MIN_CHARS} characters).`
@@ -124,6 +141,7 @@ export default function JobNew() {
             onChange={(e) => {
               setText(e.target.value);
               setMissing(null);
+              setFetchedFrom(null);
             }}
             placeholder="Software Engineer Intern, Backend&#10;Company: …&#10;&#10;What you'll do: …&#10;Requirements: …"
             disabled={!!busy}

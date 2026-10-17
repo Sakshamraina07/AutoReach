@@ -25,24 +25,42 @@ import { analyzeJob, getJob, saveJob } from './jobs.js';
 /* Access                                                              */
 /* ------------------------------------------------------------------ */
 
-/** Whether this signed-in user may read the configured career-ops folder. */
-export function careerOpsAllowed(config: AppConfig, email: string | null | undefined): boolean {
-  const { dir, ownerEmail } = config.careerOps;
-  if (!dir) return false;
-  if (!ownerEmail) return !config.isProd;
-  return !!email && email.toLowerCase() === ownerEmail;
+/** The caller as the career-ops checks see it: the signed-in email and the connection's own address. */
+export interface CareerOpsCaller {
+  email: string | null | undefined;
+  /** req.socket.remoteAddress: the TCP peer, which a forwarded-for header can't change. */
+  remoteAddress: string | null | undefined;
 }
 
-function requireAccess(deps: Deps, email: string | null | undefined): string {
+const isLoopback = (a: string | null | undefined) => !!a && (a === '::1' || /^(?:::ffff:)?127\./.test(a));
+
+/**
+ * Whether this caller may read the configured career-ops folder. Outside production the
+ * API is a program on your own computer, so the folder is only served to requests from
+ * this computer: another device on the same Wi-Fi can't read it, even with a
+ * development sign-in. With an owner email set, only that account may read it.
+ */
+export function careerOpsAllowed(config: AppConfig, caller: CareerOpsCaller): boolean {
+  const { dir, ownerEmail } = config.careerOps;
+  if (!dir) return false;
+  if (!config.isProd && !isLoopback(caller.remoteAddress)) return false;
+  if (!ownerEmail) return !config.isProd;
+  return !!caller.email && caller.email.toLowerCase() === ownerEmail;
+}
+
+function requireAccess(deps: Deps, caller: CareerOpsCaller): string {
   if (!deps.config.careerOps.dir) throw new AppError(404, 'CAREER_OPS_NOT_CONFIGURED', 'career-ops is not connected. Set CAREER_OPS_DIR in backend/.env to your career-ops folder.');
-  if (!careerOpsAllowed(deps.config, email)) throw new AppError(403, 'CAREER_OPS_NOT_YOURS', 'The career-ops folder on this server belongs to another account.');
+  if (!careerOpsAllowed(deps.config, caller)) {
+    throw new AppError(403, 'CAREER_OPS_NOT_YOURS', 'The career-ops folder on this server is only available to its owner, on the computer it is on.');
+  }
   return deps.config.careerOps.dir;
 }
 
 /** career-ops can keep its data elsewhere: a `.career-ops-data` file in the folder names that place. */
 async function dataRoot(dir: string): Promise<string> {
   try {
-    const marker = (await fs.readFile(path.join(dir, '.career-ops-data'), 'utf8')).split(/\r?\n/)[0]?.trim();
+    // career-ops trims the whole file (getCareerOpsRoot); a leading blank line is not a different folder.
+    const marker = (await fs.readFile(path.join(dir, '.career-ops-data'), 'utf8')).replace(/^\uFEFF/, '').trim();
     if (marker) return path.resolve(dir, marker);
   } catch {
     /* no marker: data lives in the folder itself */
@@ -81,22 +99,54 @@ const clean = (s: string | undefined | null) => {
   return v ? v.slice(0, 200) : null;
 };
 
-/** The header career-ops writes at the top of every evaluation report. */
-export function parseReportHeader(content: string): ParsedReport {
-  const title = content.match(/^#\s*Evaluation:\s*(.+?)\s+(?:—|–|--|-)\s+(.+?)\s*$/m);
-  const field = (name: string) => content.match(new RegExp(`^\\*\\*${name}:\\*\\*[ \\t]*(.*)$`, 'm'))?.[1];
-  const scoreRaw = field('Score')?.match(/(\d+(?:\.\d+)?)/)?.[1];
+/** Labels career-ops' language modes use for the same header fields. */
+const LABELS = {
+  score: ['Score', 'Puntuación', 'Puntuacion', 'Pontuação', 'Punteggio', 'Note', 'Wertung', 'Ocena'],
+  url: ['URL', 'Link', 'Enlace'],
+  date: ['Date', 'Fecha', 'Datum', 'Data', 'Dato', 'Datos'],
+  legitimacy: ['Legitimacy', 'Legitimidad', 'Legitimidade', 'Legitimität', 'Légitimité', 'Legittimità', 'Legitimitet', 'Wiarygodność'],
+};
+
+/**
+ * The header career-ops writes at the top of every evaluation report:
+ * `# Evaluation: {Company} — {Role}` (or the same in another language), then
+ * `**Score:** 4.2/5`, `**URL:** …`, `**Date:** …`.
+ */
+export function parseReportHeader(raw: string): ParsedReport {
+  const content = raw.replace(/^\uFEFF/, '');
+  // The first level-1 heading with a colon is the title. Split on the em dash first:
+  // company names can contain a plain hyphen ("Foo - Bar Labs — Engineer").
+  const h1 = content.match(/^#\s+[^\n:]{2,40}?\s*:\s*(.+?)\s*$/m)?.[1] ?? '';
+  let company: string | undefined;
+  let role: string | undefined;
+  for (const sep of [/\s+—\s+/, /\s+–\s+/, /\s+--\s+/, /\s+-\s+/]) {
+    const at = h1.search(sep);
+    if (at !== -1) {
+      company = h1.slice(0, at);
+      role = h1.slice(at).replace(sep, '');
+      break;
+    }
+  }
+  const field = (names: string[]) =>
+    content.match(new RegExp(`^\\*\\*(?:${names.join('|')})\\s*:\\*\\*[ \\t]*(.*)$`, 'mi'))?.[1] ??
+    content.match(new RegExp(`^\\*\\*(?:${names.join('|')})\\*\\*\\s*:[ \\t]*(.*)$`, 'mi'))?.[1];
+  const scoreRaw = field(LABELS.score)?.match(/(\d+(?:[.,]\d+)?)/)?.[1]?.replace(',', '.');
   const score = scoreRaw !== undefined ? Number(scoreRaw) : NaN;
-  const url = field('URL')?.trim().split(/\s+/)[0];
-  const date = field('Date')?.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+  const url = field(LABELS.url)?.trim().split(/\s+/)[0];
+  const date = field(LABELS.date)?.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
   return {
-    company: clean(title?.[1]),
-    role: clean(title?.[2]),
+    company: clean(company),
+    role: clean(role),
     score: Number.isFinite(score) && score >= 0 && score <= 5 ? score : null,
-    legitimacy: clean(field('Legitimacy')),
+    legitimacy: clean(field(LABELS.legitimacy)),
     date,
     url: url && /^https?:\/\/\S+$/i.test(url) ? url.slice(0, 2048) : null,
   };
+}
+
+/** Reports written by career-ops' Gemini/OpenRouter scripts carry a `**Tool:**` line: their sections are model-written. */
+export function writtenByScript(content: string): boolean {
+  return /^\*\*Tool:\*\*/m.test(content);
 }
 
 const JD_HEADING = /^##\s+Job Description\b.*$/im;
@@ -112,22 +162,26 @@ const NOT_A_POSTING = [
   /(please enable javascript|this site requires javascript|<noscript)/i,
   /(checking your browser before accessing|verify(?:ing)? (?:that )?you are (?:a )?human|please stand by,? while we (?:are )?check(?:ing)? your browser|cloudflare ray id|captcha verification required to continue)/i,
 ];
-/** The evaluator saying the section is its own wording, not the posting. */
+/** The evaluator saying the section is its own wording, not the posting (career-ops check-jd-archive.mjs, MIT, verbatim). */
 const PARAPHRASE =
-  /(\(paraphras(?:e|ed)\b[^)\n]*\)\s*(?::|$)|\b(?:what follows|the following|(?:the )?(?:text|passages?|content) below|this(?: (?:description|section|posting|text|summary|document))?) (?:is|are) (?:a |an )?(?:(?:close|detailed|faithful|complete|non-fabricated|full|accurate)[ ,]+)*(?:paraphrase|paraphrased|restatement|restated)\b|\bthis section restates\b|\bthis (?:description|section|posting|text|summary|document) (?:was|has been|is) (?:paraphrased|restated)\b|^[\s*_>#-]*(?:paraphrased|restated) (?:from|version)\b|[—–-]\s*paraphras(?:e|ed)\s*$|\bparaphrase,? not (?:a |the )?(?:literal|verbatim)\b)/im;
+  /(\(paraphras(?:e|ed)\b[^)\n]*\)\s*(?::|$)|\b(?:what follows|the following|(?:the )?(?:text|passages?|content) below|this(?: (?:description|section|posting|text|summary|document))?) (?:is|are) (?:a |an )?(?:(?:close|detailed|faithful|complete|non-fabricated|full|accurate)[ ,]+)*(?:paraphrase|paraphrased|restatement|restated)\b|\bthis section restates\b|\bthis (?:description|section|posting|text|summary|document) (?:was|has been|is) (?:paraphrased|restated)\b|^[\s*_>#-]*(?:paraphrased|restated) (?:from|version)\b|[—–-]\s*paraphras(?:e|ed)\s*$|\b(?:what follows|the following|(?:the )?(?:text|passages?|content) below|this (?:is|description|section|posting|text|summary|document))[^.\n]{0,60}?\bnot (?:a |the )?(?:literal|verbatim) (?:copy|quote|text|reproduction|archive|posting)\b|\bparaphrase,? not (?:a |the )?(?:literal|verbatim)\b|\b(?:tool|fetcher|evaluator|scraper)\b[^.\n]{0,30}?\b(?:could|would|did|can) ?not (?:be )?(?:reproduc|quot|return|captur|copi)\w*[^.\n]{0,40}\b(?:literal|verbatim)\b)/im;
 
 function isPostingText(text: string): boolean {
-  if (text.replace(/\s+/g, '').length < 40) return false;
+  // The same minimum as a pasted description (jobSaveSchema): shorter is a stub, not a posting.
+  if (text.trim().length < 80) return false;
   if (text.trim() === PLACEHOLDER) return false;
   if (POINTER.test(text.replace(/^Posted:.*$/im, '').trim())) return false;
   return !NOT_A_POSTING.some((re) => re.test(text)) && !PARAPHRASE.test(text);
 }
 
 /** The job description a report archived, when it really is the posting's own text. */
-export function jobDescriptionFromReport(content: string): string | null {
+export function jobDescriptionFromReport(raw: string): string | null {
+  const content = raw.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   const m = JD_HEADING.exec(content);
   if (!m) return null;
-  if (/\b(?:not (?:a |the )?(?:literal|verbatim)|not archived|paraphras|restat)/i.test(m[0])) return null;
+  // The heading is written by the evaluator: any disclosure there disqualifies the section.
+  if (/\b(?:not (?:a |the )?(?:literal|verbatim)|not archived|paraphras|restat|summary|summarised|summarized)/i.test(m[0])) return null;
+  if (NOT_A_POSTING.some((re) => re.test(m[0])) || PARAPHRASE.test(m[0])) return null;
   const rest = content.slice(m.index + m[0].length);
   const end = rest.search(NEXT_SECTION);
   let section = end === -1 ? rest : rest.slice(0, end);
@@ -140,8 +194,24 @@ export function jobDescriptionFromReport(content: string): string | null {
   return isPostingText(section) ? section.slice(0, 30_000) : null;
 }
 
-/** A jds/ capture for this report number ({###}-… or {#}-…), as text. */
-async function jobDescriptionFromCapture(root: string, reportNumber: number): Promise<string | null> {
+/**
+ * Is `filename` a jds/ capture of this report? The number must match and so must the
+ * company: `{NNN}-{YYYY-MM-DD}_{company}_{role}.pdf` (archive-posting.mjs) or
+ * `{NNN}-{company}-{role}.{ext}`. A number alone can belong to another posting
+ * (career-ops jd-capture.mjs, MIT).
+ */
+export function captureBelongsTo(filename: string, reportNumber: number, companySlug: string): boolean {
+  const m = /^(\d+)-/.exec(filename);
+  if (!m || Number(m[1]) !== reportNumber || !/\.(md|txt|pdf)$/i.test(filename)) return false;
+  const rest = filename.replace(/^\d+-/, '').replace(/^\d{4}-\d{2}-\d{2}[_-]/, '').toLowerCase();
+  const slug = companySlug.toLowerCase();
+  if (!slug || !rest.startsWith(slug)) return false;
+  const next = rest.charAt(slug.length);
+  return next === '' || next === '-' || next === '_' || next === '.';
+}
+
+/** A jds/ capture for this report, as text. */
+async function jobDescriptionFromCapture(root: string, reportNumber: number, companySlug: string): Promise<string | null> {
   let names: string[];
   try {
     names = await fs.readdir(path.join(root, 'jds'));
@@ -149,10 +219,7 @@ async function jobDescriptionFromCapture(root: string, reportNumber: number): Pr
     return null;
   }
   const mine = names
-    .filter((n) => {
-      const m = /^(\d+)-/.exec(n);
-      return m && Number(m[1]) === reportNumber && /\.(md|txt|pdf)$/i.test(n);
-    })
+    .filter((n) => captureBelongsTo(n, reportNumber, companySlug))
     // Text captures first: they are the posting as written; PDFs need extracting.
     .sort((a, b) => Number(/\.pdf$/i.test(a)) - Number(/\.pdf$/i.test(b)));
   for (const name of mine) {
@@ -175,28 +242,32 @@ async function jobDescriptionFromCapture(root: string, reportNumber: number): Pr
   return null;
 }
 
-/** Status per report number from career-ops' tracker (data/applications.md), matched by the report link. */
+/** Status per report number from career-ops' tracker (data/applications.md), matched by the report links in each row. */
 export function trackerStatuses(markdown: string): Map<number, string> {
   const out = new Map<number, string>();
   let statusCol = -1;
   let reportCol = -1;
-  for (const line of markdown.split(/\r?\n/)) {
-    if (!line.trim().startsWith('|')) continue;
+  for (const line of markdown.replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    if (!line.trim().startsWith('|')) {
+      statusCol = -1; // a table ended: the next one needs its own header
+      continue;
+    }
     const cells = line.split('|').map((c) => c.trim());
     if (statusCol === -1) {
       const lower = cells.map((c) => c.toLowerCase());
       const s = lower.findIndex((c) => c === 'status' || c === 'estado');
-      if (s !== -1) {
+      const r = lower.findIndex((c) => c === 'report' || c === 'informe');
+      // The tracker's header names Status and Report (and the company): a lone "Status" cell elsewhere is not it.
+      if (s !== -1 && r !== -1 && lower.some((c) => c === 'company' || c === 'empresa')) {
         statusCol = s;
-        reportCol = lower.findIndex((c) => c === 'report' || c === 'informe');
+        reportCol = r;
       }
       continue;
     }
     if (/^[-:\s|]+$/.test(line)) continue;
-    const linkCell = reportCol !== -1 ? cells[reportCol] ?? '' : line;
-    const num = /reports\/(\d+)-/.exec(linkCell)?.[1];
     const status = cells[statusCol]?.replace(/[*_`]/g, '').trim();
-    if (num && status) out.set(Number(num), status.slice(0, 60));
+    if (!status) continue;
+    for (const m of (cells[reportCol] ?? '').matchAll(/reports\/(\d+)-/g)) out.set(Number(m[1]), status.slice(0, 60));
   }
   return out;
 }
@@ -204,6 +275,8 @@ export function trackerStatuses(markdown: string): Map<number, string> {
 interface ReportFile {
   number: number;
   name: string;
+  /** The company slug in the file name, which names its jds/ captures too. */
+  slug: string;
   content: string;
 }
 
@@ -217,7 +290,7 @@ async function readReports(root: string): Promise<{ files: ReportFile[]; unreada
   const candidates = names
     .map((name) => ({ name, m: REPORT_FILE.exec(name) }))
     .filter((x): x is { name: string; m: RegExpExecArray } => !!x.m)
-    .map((x) => ({ name: x.name, number: Number(x.m[1]) }))
+    .map((x) => ({ name: x.name, number: Number(x.m[1]), slug: x.m[2]! }))
     .sort((a, b) => b.number - a.number)
     .slice(0, MAX_REPORTS);
   const files: ReportFile[] = [];
@@ -230,7 +303,7 @@ async function readReports(root: string): Promise<{ files: ReportFile[]; unreada
         unreadable.push(c.name);
         continue;
       }
-      files.push({ ...c, content: await fs.readFile(file, 'utf8') });
+      files.push({ ...c, content: (await fs.readFile(file, 'utf8')).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n') });
     } catch {
       unreadable.push(c.name);
     }
@@ -259,8 +332,8 @@ async function linkedOpportunities(deps: Deps, userId: string): Promise<{ byUrl:
 /* API                                                                 */
 /* ------------------------------------------------------------------ */
 
-export async function careerOpsOverview(deps: Deps, userId: string, email: string | null | undefined): Promise<CareerOpsOverview> {
-  const dir = requireAccess(deps, email);
+export async function careerOpsOverview(deps: Deps, userId: string, caller: CareerOpsCaller): Promise<CareerOpsOverview> {
+  const dir = requireAccess(deps, caller);
   if (!(await folderExists(dir))) throw unprocessable('CAREER_OPS_DIR_MISSING', `The folder ${dir} doesn't exist on this computer. Check CAREER_OPS_DIR in backend/.env.`);
   const root = await dataRoot(dir);
   const { files, unreadable } = await readReports(root);
@@ -274,10 +347,7 @@ export async function careerOpsOverview(deps: Deps, userId: string, email: strin
   const jobs: CareerOpsJob[] = [];
   for (const f of files) {
     const h = parseReportHeader(f.content);
-    let description: CareerOpsJob['description'] = 'none';
-    if (jobDescriptionFromReport(f.content)) description = 'report';
-    else if (await hasCapture(root, f.number)) description = 'saved';
-    else if (h.url && jobBoardTarget(h.url)) description = 'link';
+    const description = (await descriptionSources(root, f, h))[0]?.kind ?? 'none';
     jobs.push({
       report_number: f.number,
       report_file: f.name,
@@ -290,15 +360,29 @@ export async function careerOpsOverview(deps: Deps, userId: string, email: strin
   return { jobs, unreadable, cv_exists: await fileExists(path.join(root, 'cv.md')) };
 }
 
-async function hasCapture(root: string, reportNumber: number): Promise<boolean> {
+async function hasCapture(root: string, f: ReportFile): Promise<boolean> {
   try {
-    return (await fs.readdir(path.join(root, 'jds'))).some((n) => {
-      const m = /^(\d+)-/.exec(n);
-      return !!m && Number(m[1]) === reportNumber && /\.(md|txt|pdf)$/i.test(n);
-    });
+    return (await fs.readdir(path.join(root, 'jds'))).some((n) => captureBelongsTo(n, f.number, f.slug));
   } catch {
     return false;
   }
+}
+
+type Source = { kind: Exclude<CareerOpsJob['description'], 'none'>; read: () => Promise<string | null> };
+
+/**
+ * Where a report's description can come from, best first:
+ * 1. the posting's own job board (Greenhouse, Lever, Ashby), the most faithful copy;
+ * 2. a jds/ capture career-ops saved for this report;
+ * 3. the report's "Job Description" section, unless a script wrote the report, because
+ *    then the section is the model's retyping of the posting, not the posting.
+ */
+async function descriptionSources(root: string, f: ReportFile, h: ParsedReport): Promise<Source[]> {
+  const out: Source[] = [];
+  if (h.url && jobBoardTarget(h.url)) out.push({ kind: 'link', read: async () => null }); // read over the network at import
+  if (await hasCapture(root, f)) out.push({ kind: 'saved', read: () => jobDescriptionFromCapture(root, f.number, f.slug) });
+  if (!writtenByScript(f.content) && jobDescriptionFromReport(f.content)) out.push({ kind: 'report', read: async () => jobDescriptionFromReport(f.content) });
+  return out;
 }
 
 async function fileExists(p: string): Promise<boolean> {
@@ -314,16 +398,20 @@ async function fileExists(p: string): Promise<boolean> {
  * report (or its saved capture, or the posting's job board), read and checked the
  * same way as a pasted one, with career-ops' company and role.
  */
-export async function importCareerOpsJob(deps: Deps, userId: string, email: string | null | undefined, reportNumber: number): Promise<JobView> {
-  const dir = requireAccess(deps, email);
+export async function importCareerOpsJob(deps: Deps, userId: string, caller: CareerOpsCaller, reportNumber: number): Promise<JobView> {
+  const dir = requireAccess(deps, caller);
   const root = await dataRoot(dir);
   const { files } = await readReports(root);
   const file = files.find((f) => f.number === reportNumber);
   if (!file) throw notFound('career-ops report');
   const header = parseReportHeader(file.content);
 
-  let text = jobDescriptionFromReport(file.content) ?? (await jobDescriptionFromCapture(root, reportNumber));
-  if (!text && header.url) text = (await fetchJobFromBoard(deps.fetch, header.url))?.text ?? null;
+  let text: string | null = null;
+  for (const source of await descriptionSources(root, file, header)) {
+    text = source.kind === 'link' ? ((await fetchJobFromBoard(deps.fetch, header.url!))?.text ?? null) : await source.read();
+    if (text && text.trim().length >= 80) break;
+    text = null;
+  }
   if (!text) {
     throw unprocessable(
       'CAREER_OPS_NO_DESCRIPTION',
@@ -342,17 +430,22 @@ export async function importCareerOpsJob(deps: Deps, userId: string, email: stri
   const company = header.company ?? analysis.company;
   const title = header.role ?? analysis.title;
   if (!company || !title) throw unprocessable('CAREER_OPS_MISSING_NAME', 'The report names no company or role. Paste the description into New job instead.');
-  const req = jobSaveSchema.parse({
+  const parsed = jobSaveSchema.safeParse({
     text,
     url: header.url,
-    analysis: { ...analysis, company, title },
+    analysis: { ...analysis, company: company.slice(0, 160), title: title.slice(0, 200) },
     opportunity_id: existing ?? null,
   });
+  if (!parsed.success) {
+    throw unprocessable('CAREER_OPS_UNREADABLE', "This report couldn't be turned into a job. Paste the description into New job instead.", { url: header.url });
+  }
+  const req = parsed.data;
   return deps.db.withUser(userId, async (tx) => {
     // Serialise imports of the same report (double click) on the user's settings row.
     await tx.query(`SELECT 1 FROM user_settings WHERE user_id = $1 FOR UPDATE`, [userId]);
     const again = await tx.maybeOne<{ id: string }>(`SELECT id FROM opportunities WHERE user_id = $1 AND career_ops_report = $2`, [userId, reportNumber]);
-    const view = await saveJob(deps, tx, userId, { ...req, opportunity_id: req.opportunity_id ?? again?.id ?? null });
+    // The lookup made under the lock wins over the one made before it.
+    const view = await saveJob(deps, tx, userId, { ...req, opportunity_id: again?.id ?? req.opportunity_id ?? null });
     await tx.query(`UPDATE opportunities SET career_ops_report = $3, career_ops_score = $4 WHERE user_id = $1 AND id = $2`, [userId, view.opportunity.id, reportNumber, header.score]);
     return getJob(deps, tx, userId, view.opportunity.id);
   });
@@ -409,8 +502,8 @@ export function profileToCvMarkdown(p: Profile): string {
 }
 
 /** Write cv.md into the career-ops folder. Never replaces one that exists. */
-export async function writeCareerOpsCv(deps: Deps, email: string | null | undefined, markdown: string): Promise<{ path: string }> {
-  const root = await dataRoot(requireAccess(deps, email));
+export async function writeCareerOpsCv(deps: Deps, caller: CareerOpsCaller, markdown: string): Promise<{ path: string }> {
+  const root = await dataRoot(requireAccess(deps, caller));
   if (!(await folderExists(root))) throw unprocessable('CAREER_OPS_DIR_MISSING', `The folder ${root} doesn't exist on this computer.`);
   const target = path.join(root, 'cv.md');
   try {

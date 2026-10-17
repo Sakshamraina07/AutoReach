@@ -1,7 +1,9 @@
-import { Router, type RequestHandler } from 'express';
+import { Router, type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
 import type { Deps } from '../../context.js';
-import { careerOpsOverview, importCareerOpsJob, profileToCvMarkdown, writeCareerOpsCv } from '../../services/careerOps.js';
+import { careerOpsOverview, importCareerOpsJob, profileToCvMarkdown, writeCareerOpsCv, type CareerOpsCaller } from '../../services/careerOps.js';
+
+export const careerOpsCaller = (req: Request): CareerOpsCaller => ({ email: req.user?.email, remoteAddress: req.socket.remoteAddress });
 import { unprocessable } from '../../errors.js';
 import { getProfile } from '../../services/profile.js';
 import { parse, userId } from '../support.js';
@@ -12,13 +14,13 @@ export function careerOpsRoutes(deps: Deps, limiters: { ai: RequestHandler }): R
 
   r.get('/career-ops', async (req, res) => {
     const uid = userId(req);
-    res.json(await careerOpsOverview(deps, uid, req.user?.email));
+    res.json(await careerOpsOverview(deps, uid, careerOpsCaller(req)));
   });
 
   r.post('/career-ops/reports/:number/import', limiters.ai, async (req, res) => {
     const uid = userId(req);
     const { number } = parse(z.object({ number: z.coerce.number().int().min(0).max(1_000_000) }), req.params);
-    res.status(201).json(await importCareerOpsJob(deps, uid, req.user?.email, number));
+    res.status(201).json(await importCareerOpsJob(deps, uid, careerOpsCaller(req), number));
   });
 
   async function cvMarkdown(uid: string): Promise<string> {
@@ -41,7 +43,7 @@ export function careerOpsRoutes(deps: Deps, limiters: { ai: RequestHandler }): R
   r.post('/career-ops/cv.md', async (req, res) => {
     const uid = userId(req);
     const md = await cvMarkdown(uid);
-    res.status(201).json(await writeCareerOpsCv(deps, req.user?.email, md));
+    res.status(201).json(await writeCareerOpsCv(deps, careerOpsCaller(req), md));
   });
 
   return r;

@@ -189,13 +189,18 @@ select opportunity/role → select recruiter → select résumé → Generate (A
 - `services/careerOps.ts` reads a local career-ops folder (`CAREER_OPS_DIR`, following its
   `.career-ops-data` marker): `reports/{###}-{slug}-{date}.md` headers (company, role, score,
   URL, legitimacy), the verbatim `## Job Description` section (career-ops' own
-  `check-jd-archive.mjs` rules: no placeholders, pointers, sign-in walls or paraphrases),
+  `check-jd-archive.mjs` rules: no placeholders, pointers, sign-in walls or paraphrases, at
+  least 80 characters),
   `jds/{###}-…` captures (`.md`, `.txt`, `.pdf` via unpdf) and statuses from
   `data/applications.md` matched by report link. File names come only from directory
   listings. `importCareerOpsJob` runs the normal analyze → save path, records
   `opportunities.career_ops_report/score` (unique per user and report) and returns the job.
-  Access requires `CAREER_OPS_OWNER_EMAIL` to match the signed-in email when set (always in
-  production).
+  Description sources, best first: the posting's board API, a `jds/` capture whose name
+  matches the report's number and company slug, then the report's section (not when the
+  report has a `**Tool:**` line, i.e. was written by a career-ops script). Access: outside
+  production only from a loopback TCP peer (`req.socket.remoteAddress`, not forwarded
+  headers); `CAREER_OPS_OWNER_EMAIL`, when set (always in production), must match the
+  signed-in email.
 - `services/jobFetch.ts` reads Greenhouse (`boards-api.greenhouse.io`), Lever
   (`api.lever.co` / `api.eu.lever.co`) and Ashby (`api.ashbyhq.com/posting-api`) public
   posting APIs for links of those boards' exact shapes; no other host is ever contacted.

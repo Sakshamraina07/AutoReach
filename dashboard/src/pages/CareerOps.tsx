@@ -105,6 +105,8 @@ function JobRow({ job: j }: { job: CareerOpsJob }) {
   const invalidate = useInvalidate();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  // Set when the import found no usable description: offer pasting it instead.
+  const [needsPaste, setNeedsPaste] = useState<string | null>(null);
 
   async function writeEmails() {
     setBusy(true);
@@ -113,7 +115,7 @@ function JobRow({ job: j }: { job: CareerOpsJob }) {
       await invalidate(['career-ops']);
       navigate(`/jobs/${view.opportunity.id}`);
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'CAREER_OPS_NO_DESCRIPTION') toast.info(e.message);
+      if (e instanceof ApiError && (e.code === 'CAREER_OPS_NO_DESCRIPTION' || e.code === 'CAREER_OPS_UNREADABLE' || e.code === 'CAREER_OPS_MISSING_NAME')) setNeedsPaste(e.message);
       else toast.error(e);
       setBusy(false);
     }
@@ -138,6 +140,7 @@ function JobRow({ job: j }: { job: CareerOpsJob }) {
             </>
           ) : null}
         </p>
+        {needsPaste && <p className="mt-1 text-xs text-warn">{needsPaste}</p>}
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">
         {j.status && <Badge tone={CLOSED.test(j.status) ? 'neutral' : 'info'}>{j.status}</Badge>}
@@ -146,7 +149,7 @@ function JobRow({ job: j }: { job: CareerOpsJob }) {
           <Link to={`/jobs/${j.opportunity_id}`} className="inline-flex h-7 items-center rounded border border-line px-2.5 text-xs text-ink hover:border-faint">
             Open job
           </Link>
-        ) : j.description === 'none' ? (
+        ) : j.description === 'none' || needsPaste ? (
           <Link to={pasteLink} className="inline-flex h-7 items-center rounded border border-line px-2.5 text-xs text-ink hover:border-faint">
             Paste description
           </Link>

@@ -197,6 +197,8 @@ describe('reading a posting from its job board', () => {
     const ab = await fetchJobFromBoard(fetchImpl, 'https://jobs.ashbyhq.com/northwind/job-42');
     expect(ab).toMatchObject({ board: 'ashby', title: 'Backend Intern', location: 'Remote' });
     expect(await fetchJobFromBoard(fetchImpl, 'https://jobs.ashbyhq.com/northwind/closed-job')).toBeNull();
+    // /{board}/{board} names no job: it must not match every posting on the board.
+    expect(await fetchJobFromBoard(fetchImpl, 'https://jobs.ashbyhq.com/northwind/northwind')).toBeNull();
     expect(await fetchJobFromBoard(fetchImpl, 'https://example.org/careers/1')).toBeNull();
     // Only the boards' own API hosts were contacted.
     expect(calls.every((u) => /^https:\/\/(boards-api\.greenhouse\.io|api\.lever\.co|api\.ashbyhq\.com)\//.test(u))).toBe(true);

@@ -21,7 +21,7 @@ reminded when to follow up.
 * **Recruiter CRM**: search, filter, tags, notes, CSV import/export, duplicate detection by
   normalised email, merges that keep history, links to job opportunities.
   ![Job page](docs/screenshots/job-page.png)
-* **Works with career-ops**: if you use [career-ops](https://github.com/santifer/career-ops) to
+* **Works with career-ops**: if you use [career-ops](https://github.com/career-ops-hq/career-ops) to
   find and score jobs, AutoReach lists its scored jobs and turns any of them into a job page
   with one click ([setup on Windows](docs/CAREER_OPS.md)). Greenhouse, Lever and Ashby links
   can also fill in a job description for you.

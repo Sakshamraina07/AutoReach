@@ -1,6 +1,6 @@
 # career-ops and AutoReach on one computer
 
-[career-ops](https://github.com/santifer/career-ops) (open source, MIT) finds job postings and
+[career-ops](https://github.com/career-ops-hq/career-ops) (open source, MIT) finds job postings and
 scores them against your CV. AutoReach turns the good ones into emails to the people who hire
 for them. Both run on your computer. They share nothing except files: career-ops writes a
 report for every job it evaluates, and AutoReach reads those reports.
@@ -22,12 +22,11 @@ You need Node.js 22.13 or later (the same one AutoReach uses). In PowerShell:
 ```powershell
 cd D:\
 npx @santifer/career-ops init
-cd D:\career-ops
-npx playwright install chromium
 ```
 
-`init` downloads career-ops into `D:\career-ops` and installs what it needs. Playwright's
-Chromium is used to read job pages and make PDFs.
+`init` downloads career-ops into `D:\career-ops` and installs what it needs, including the
+Chromium browser it uses to read job pages and make PDFs. If `npm run doctor` (step 3) says
+Chromium is missing, run `npx playwright install chromium` in `D:\career-ops`.
 
 ## 2. Connect AutoReach to it
 
@@ -90,8 +89,9 @@ In `D:\career-ops` (PowerShell):
 ```powershell
 npm run scan                                      # find new postings (uses no AI)
 node batch-evaluate-gemini.mjs --limit=10         # score up to 10 of them with Gemini
-npm run merge                                     # add them to career-ops' tracker
 ```
+
+The second command also adds the scored jobs to career-ops' own tracker.
 
 Then in AutoReach:
 
@@ -105,16 +105,20 @@ Then in AutoReach:
 
 ## Where the description comes from
 
-For each report, AutoReach uses, in this order:
+For each report, AutoReach uses the first of these that works:
 
-1. **The report's own "Job Description" section**, when it is the posting's text. It skips a
-   section that is empty, only points to another file, is a sign-in or error page, or says it
-   is a paraphrase.
-2. **A copy career-ops saved in `jds\`** for that report number (`.md`, `.txt` or `.pdf`).
-3. **The posting's job board**, when the link is on Greenhouse, Lever or Ashby. Those boards
-   publish their postings' text for exactly this; AutoReach asks only their API servers.
-4. Otherwise the row says **No description saved** and **Paste description** opens New job
-   with the link, company and role filled in.
+1. **The posting's job board**, when the link is on Greenhouse, Lever or Ashby. Those boards
+   publish their postings' text for exactly this, so it is the most faithful copy. AutoReach
+   asks only their API servers.
+2. **A copy career-ops saved in `jds\`** for that report: the file name must start with the
+   report's number and the same company as the report (`.md`, `.txt` or `.pdf`).
+3. **The report's own "Job Description" section**, when it is the posting's text. It skips a
+   section that is shorter than a real posting, only points to another file, is a sign-in or
+   error page, or says it is a paraphrase or summary. It also skips the section in reports
+   written by career-ops' Gemini or OpenRouter scripts (they carry a `**Tool:**` line),
+   because there the section is the model's retyping of the posting, not the posting.
+4. Otherwise the row says **No description saved**, and **Paste description** opens New job
+   with the link filled in and the company and role suggested.
 
 The same Greenhouse, Lever and Ashby reading is on the **New job** page: paste a link and
 click **Get description**.
@@ -125,7 +129,12 @@ click **Get description**.
   If you already added the job by hand with the same link, AutoReach uses that job.
 - AutoReach doesn't change career-ops' tracker. Mark the application in career-ops yourself
   (for example `node set-status.mjs`), or ask your AI tool to.
-- `CAREER_OPS_OWNER_EMAIL` makes sure only your account can read the folder. It is required
-  if you ever run the API with `NODE_ENV=production`.
+- Who can read the folder: outside production, AutoReach serves career-ops only to requests
+  from this computer, so another device on your Wi-Fi can't read it.
+  `CAREER_OPS_OWNER_EMAIL` also limits it to your account; it is required if you ever run the
+  API with `NODE_ENV=production`.
+- If you moved career-ops' data with a `.career-ops-data` file, AutoReach follows it, and that
+  is where it reads reports and writes `cv.md`. It doesn't read the `CAREER_OPS_ROOT` variable;
+  if you use that, set `CAREER_OPS_DIR` to the data folder instead.
 - career-ops is a separate project with its own updates (`npm run update` in its folder) and
   its own trademark policy for the name.
