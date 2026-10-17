@@ -22,3 +22,7 @@ backend/.data/
 .tmp/
 extension/release/
 extension/.build-info.json
+
+# career-ops lives here but is its own project (own git repo, own updater, personal data)
+career-ops/
+

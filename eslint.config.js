@@ -1,11 +1,11 @@
-import js from '@eslint/js';
+﻿import js from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', 'website/**', '**/coverage/**', '**/.data/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'website/**', 'career-ops/**', '**/coverage/**', '**/.data/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

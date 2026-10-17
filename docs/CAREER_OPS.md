@@ -8,7 +8,7 @@ report for every job it evaluates, and AutoReach reads those reports.
 ```
 career-ops                                  AutoReach
   scan job boards ─▶ score each job ─▶ report ─▶ From career-ops page ─▶ Write emails ─▶ job page
-  (D:\career-ops)              (reports\*.md)       (sorted by score)                      (fit + one email per person)
+  (D:/AutoReach/career-ops)              (reports\*.md)       (sorted by score)                      (fit + one email per person)
 ```
 
 AutoReach only **reads** `reports\`, `jds\` and `data\applications.md` in the career-ops
@@ -24,9 +24,9 @@ cd D:\
 npx @santifer/career-ops init
 ```
 
-`init` downloads career-ops into `D:\career-ops` and installs what it needs, including the
+`init` downloads career-ops into `D:/AutoReach/career-ops` and installs what it needs, including the
 Chromium browser it uses to read job pages and make PDFs. If `npm run doctor` (step 3) says
-Chromium is missing, run `npx playwright install chromium` in `D:\career-ops`.
+Chromium is missing, run `npx playwright install chromium` in `D:/AutoReach/career-ops`.
 
 ## 2. Connect AutoReach to it
 
@@ -34,7 +34,7 @@ Open `D:\AutoReach\backend\.env` in Notepad and add two lines (forward slashes a
 Windows and avoid any backslash surprises):
 
 ```
-CAREER_OPS_DIR=D:/career-ops
+CAREER_OPS_DIR=D:/AutoReach/career-ops
 CAREER_OPS_OWNER_EMAIL=the email you sign in to AutoReach with
 ```
 
@@ -56,7 +56,7 @@ it tried.
 2. Copy the starter settings:
 
    ```powershell
-   cd D:\career-ops
+   cd D:/AutoReach/career-ops
    copy config\profile.example.yml config\profile.yml
    copy modes\_profile.template.md modes\_profile.md
    copy templates\portals.example.yml portals.yml
@@ -71,20 +71,20 @@ it tried.
 4. Check everything: `npm run doctor`. It lists anything still missing.
 
 If you use an AI coding tool such as Claude Code or Codex, you can skip steps 2–3: open it
-in `D:\career-ops` and it sets these files up by chatting.
+in `D:/AutoReach/career-ops` and it sets these files up by chatting.
 
 ## 4. Choose how career-ops scores jobs
 
 - **With your Gemini key (no extra tool needed).** Copy `.env.example` to `.env` in
-  `D:\career-ops` and set `GEMINI_API_KEY=` to your key from aistudio.google.com. The same
+  `D:/AutoReach/career-ops` and set `GEMINI_API_KEY=` to your key from aistudio.google.com. The same
   key AutoReach uses works. On Gemini's free tier, Google may use what you send to improve its
   products; see [AI_PROVIDERS.md](AI_PROVIDERS.md).
 - **With an AI coding tool** (Claude Code, Codex, Gemini CLI and others): open it in
-  `D:\career-ops` and use `/career-ops` commands. See career-ops' own README.
+  `D:/AutoReach/career-ops` and use `/career-ops` commands. See career-ops' own README.
 
 ## 5. The daily routine
 
-In `D:\career-ops` (PowerShell):
+In `D:/AutoReach/career-ops` (PowerShell):
 
 ```powershell
 npm run scan                                      # find new postings (uses no AI)
