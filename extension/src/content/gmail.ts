@@ -65,29 +65,30 @@ async function lookup(emails: string[]): Promise<RecruiterLookupResult[] | null>
 const STYLE = `
 :host { all: initial; }
 .card { position: fixed; left: 16px; bottom: 16px; z-index: 2147483000; width: 320px; max-height: 50vh; overflow: auto;
-  font: 13px/1.45 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; color: #E6EAF2; background: #151B25;
-  border: 1px solid #263042; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
-.head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #263042; }
+  font: 13px/1.45 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; color: #ECE9E2; background: #1E2024;
+  border: 1px solid #32363C; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+.head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #32363C; }
 .brand { font-weight: 600; flex: 1; display: flex; align-items: center; gap: 6px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #5FD3A0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #6CC59A; }
 button { font: inherit; cursor: pointer; border-radius: 6px; }
-.x { background: none; border: 0; color: #9AA5B8; padding: 2px 6px; }
-.x:hover { color: #E6EAF2; background: #1B2230; }
-.item { padding: 8px 10px; border-bottom: 1px solid rgba(38,48,66,.6); }
+.x { background: none; border: 0; color: #A7A39A; padding: 2px 6px; }
+.x:hover { color: #ECE9E2; background: #26292E; }
+.item { padding: 8px 10px; border-bottom: 1px solid rgba(50,54,60,.7); }
 .item:last-child { border-bottom: 0; }
 .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.detail { color: #9AA5B8; font-size: 12px; }
-.warn { color: #F2B05E; font-size: 12px; margin-top: 2px; }
-.danger { color: #F27474; }
-.success { color: #5FD3A0; }
-.info { color: #8FB3D9; }
+.detail { color: #A7A39A; font-size: 12px; }
+.warn { color: #E3A84F; font-size: 12px; margin-top: 2px; }
+.danger { color: #E2706A; }
+.success { color: #6CC59A; }
+.info { color: #9AA7B4; }
 .actions { display: flex; gap: 6px; margin-top: 6px; }
-.btn { background: #1B2230; color: #E6EAF2; border: 1px solid #263042; padding: 3px 8px; font-size: 12px; }
-.btn:hover { border-color: #6B7689; }
-.btn.primary { background: #7C9CFF; color: #0C1222; border-color: #7C9CFF; }
-a { color: #7C9CFF; font-size: 12px; text-decoration: none; align-self: center; }
-a:hover { text-decoration: underline; }
-:focus-visible { outline: 2px solid #7C9CFF; outline-offset: 2px; }
+.btn { background: #26292E; color: #ECE9E2; border: 1px solid #32363C; padding: 3px 8px; font-size: 12px; }
+.btn:hover { border-color: #7A766E; }
+.btn.primary { background: #ECE9E2; color: #17191C; border-color: #ECE9E2; }
+.btn.primary:hover { background: #FFFFFF; }
+a { color: #ECE9E2; font-size: 12px; text-decoration: underline; text-decoration-color: #7A766E; text-underline-offset: 3px; align-self: center; }
+a:hover { text-decoration-color: #ECE9E2; }
+:focus-visible { outline: 2px solid #ECE9E2; outline-offset: 2px; }
 `;
 
 let host: HTMLElement | null = null;

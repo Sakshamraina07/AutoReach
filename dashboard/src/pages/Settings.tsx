@@ -7,7 +7,7 @@ import { cleanProfile, ExtractFromResumeDialog, ProfileEditor, profileToForm, ty
 import { Badge, Button, Confirm, Dialog, ErrorState, Field, PageHeader, SectionTitle, Spinner, TagInput, Toggle, useToast } from '../components/ui';
 import { api, download } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { browserTimezone, fmtBytes, fmtDate, fmtDateTime, plural } from '../lib/format';
+import { browserTimezone, fmtBytes, fmtResumeSize, fmtDate, fmtDateTime, plural } from '../lib/format';
 import { startGmailConnect } from '../lib/gmail';
 import { useInvalidate, useMe, useResumes, useTemplates } from '../lib/queries';
 import { useQueryClient } from '@tanstack/react-query';
@@ -354,7 +354,7 @@ function ResumesSection() {
                     {!r.has_text && <Badge tone="warning" title="No text could be read from this PDF (it may be a scanned image). It can still be attached.">no readable text</Badge>}
                   </div>
                   <p className="truncate text-xs text-muted">
-                    {r.file_name}, {fmtBytes(r.size_bytes)}, uploaded {fmtDate(r.created_at)}
+                    {r.file_name}, {fmtResumeSize(r)}, uploaded {fmtDate(r.created_at)}
                     {r.role_tags.length ? `. Best for ${r.role_tags.join(', ')}` : ''}
                   </p>
                 </div>

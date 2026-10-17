@@ -6,7 +6,7 @@ import { cleanProfile, ExtractFromResumeDialog, ProfileEditor, profileToForm, ty
 import { Badge, Button, ErrorState, Field, Spinner, Toggle, useToast } from '../components/ui';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { browserTimezone, fmtBytes } from '../lib/format';
+import { browserTimezone, fmtResumeSize } from '../lib/format';
 import { useInvalidate, useMe, useResumes } from '../lib/queries';
 import { startGmailConnect } from '../lib/gmail';
 import { ResumeUpload, TimezoneSelect } from './Settings';
@@ -208,7 +208,7 @@ function ResumeStep({ form, setForm }: { form: ProfileForm; setForm: (f: Profile
               <li key={r.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
                 <FileText className="h-4 w-4 text-muted" aria-hidden />
                 <span className="min-w-0 flex-1 truncate">{r.label}</span>
-                <span className="text-xs text-muted">{fmtBytes(r.size_bytes)}</span>
+                <span className="text-xs text-muted">{fmtResumeSize(r)}</span>
                 {r.is_default && <Badge tone="accent">default</Badge>}
               </li>
             ))}

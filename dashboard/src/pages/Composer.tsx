@@ -23,7 +23,7 @@ import { QualityPanel } from '../components/QualityPanel';
 import { Badge, Button, Dialog, ErrorState, Field, Spinner, Toggle, useToast } from '../components/ui';
 import { api, ApiError, idempotencyKey } from '../lib/api';
 import { gmailProblem } from '../lib/gmail';
-import { fmtBytes, fmtDate } from '../lib/format';
+import { fmtResumeSize, fmtDate } from '../lib/format';
 import { useInvalidate, useMe, useOpportunities, useOpportunity, useRecruiter, useRecruiters, useResumes } from '../lib/queries';
 
 interface SendResponse {
@@ -345,7 +345,7 @@ export default function Composer() {
               <div className="flex items-center gap-2 text-xs text-muted">
                 <Paperclip className="h-3.5 w-3.5" />
                 <span className="min-w-0 flex-1 truncate" title={selectedResume.file_name}>
-                  {selectedResume.file_name} ({fmtBytes(selectedResume.size_bytes)})
+                  {selectedResume.file_name} ({fmtResumeSize(selectedResume)})
                 </span>
                 <button type="button" className="text-accent hover:underline" onClick={previewResume}>
                   Preview
@@ -470,7 +470,7 @@ export default function Composer() {
           recruiter={r}
           subject={subject}
           body={body}
-          attachment={selectedResume ? `${attachmentDisplayName(selectedResume.file_name, me.data?.settings.attachment_filename)} (${fmtBytes(selectedResume.size_bytes)})` : null}
+          attachment={selectedResume ? `${attachmentDisplayName(selectedResume.file_name, me.data?.settings.attachment_filename)} (${fmtResumeSize(selectedResume)})` : null}
           tracking={!!tracking}
           fromAccount={me.data?.gmail.account_email ?? null}
           gmailProblem={gmailProblem(me.data?.gmail)}

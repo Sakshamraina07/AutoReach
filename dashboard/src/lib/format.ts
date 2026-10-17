@@ -64,3 +64,8 @@ export function fmtBytes(n: number): string {
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
+
+/** A v1 résumé's size is unknown until AutoReach first reads the file (before a send, or on preview). */
+export function fmtResumeSize(r: { size_bytes: number | null; legacy: boolean }): string {
+  return !r.size_bytes && r.legacy ? 'from v1, not checked yet' : fmtBytes(r.size_bytes ?? 0);
+}

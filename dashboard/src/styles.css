@@ -8,38 +8,39 @@
 
 /* Tokens are RGB triplets so Tailwind opacity modifiers work (bg-accent/10). */
 :root {
-  --bg: 15 20 28; /* #0F141C ink navy */
-  --surface: 21 27 37; /* #151B25 */
-  --raised: 27 34 48; /* #1B2230 */
-  --line: 38 48 66; /* #263042 */
-  --ink: 230 234 242; /* #E6EAF2 */
-  --muted: 154 165 184; /* #9AA5B8 */
-  --faint: 107 118 137; /* #6B7689 */
-  --accent: 124 156 255; /* #7C9CFF ink blue */
-  --accent-ink: 12 18 34; /* text on accent */
-  --sent: 143 179 217; /* #8FB3D9 */
-  --opened: 183 156 255; /* #B79CFF — soft on purpose: an uncertain signal */
-  --replied: 95 211 160; /* #5FD3A0 */
-  --warn: 242 176 94; /* #F2B05E */
-  --danger: 242 116 116; /* #F27474 */
+  --bg: 23 25 28; /* #17191C charcoal */
+  --surface: 30 32 36; /* #1E2024 */
+  --raised: 38 41 46; /* #26292E */
+  --line: 50 54 60; /* #32363C */
+  --ink: 236 233 226; /* #ECE9E2 paper */
+  --muted: 167 163 154; /* #A7A39A */
+  --faint: 122 118 110; /* #7A766E */
+  /* Primary actions are ink on paper: no brand hue. Colour is kept for status. */
+  --accent: 236 233 226;
+  --accent-ink: 23 25 28;
+  --sent: 154 167 180; /* #9AA7B4 steel: delivered, nothing more */
+  --opened: 200 174 125; /* #C8AE7D sand, muted on purpose: an uncertain signal */
+  --replied: 108 197 154; /* #6CC59A */
+  --warn: 227 168 79; /* #E3A84F */
+  --danger: 226 112 106; /* #E2706A */
   color-scheme: dark;
 }
 
 :root[data-theme='light'] {
-  --bg: 246 247 249;
+  --bg: 245 245 244;
   --surface: 255 255 255;
-  --raised: 241 243 247;
-  --line: 221 226 234;
-  --ink: 23 32 49;
-  --muted: 84 97 119;
-  --faint: 125 136 155;
-  --accent: 61 91 217;
+  --raised: 239 238 236;
+  --line: 222 220 216;
+  --ink: 28 29 31;
+  --muted: 87 85 80;
+  --faint: 128 125 118;
+  --accent: 28 29 31;
   --accent-ink: 255 255 255;
-  --sent: 62 104 148;
-  --opened: 116 82 206;
-  --replied: 22 140 92;
-  --warn: 176 104 14;
-  --danger: 200 54 54;
+  --sent: 74 95 117;
+  --opened: 140 108 52;
+  --replied: 30 132 88;
+  --warn: 168 104 12;
+  --danger: 190 58 50;
   color-scheme: light;
 }
 
@@ -54,7 +55,7 @@
     font-feature-settings: 'tnum' 0;
   }
   ::selection {
-    @apply bg-accent/30;
+    @apply bg-ink/25;
   }
   :focus-visible {
     outline: 2px solid rgb(var(--accent));
@@ -70,7 +71,22 @@
     @apply font-semibold tracking-tight;
   }
   a {
-    @apply text-accent hover:underline;
+    @apply text-ink underline decoration-faint/70 underline-offset-[3px] hover:decoration-ink;
+  }
+  /* Native checkboxes and radios follow the ink colour instead of the browser's blue. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: rgb(var(--ink));
+  }
+  /* Rows, cards and back-links are navigation, not prose: no underline. */
+  a.block,
+  a.flex,
+  a.inline-flex {
+    @apply no-underline;
+  }
+  /* Inline text actions ("Resume", "Preview") read as links. */
+  button.text-accent {
+    @apply text-ink underline decoration-faint/70 underline-offset-[3px] hover:decoration-ink;
   }
   @media (prefers-reduced-motion: reduce) {
     *,

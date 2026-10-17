@@ -161,7 +161,7 @@ export function Toggle({ checked, onChange, label, description, disabled }: { ch
           checked ? 'border-accent bg-accent' : 'border-line bg-raised',
         )}
       >
-        <span className={clsx('absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full bg-white transition-transform', checked ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+        <span className={clsx('absolute left-0 top-0.5 h-3.5 w-3.5 rounded-full transition-transform', checked ? 'translate-x-[18px] bg-accent-ink' : 'translate-x-0.5 bg-faint')} />
       </button>
     </div>
   );
